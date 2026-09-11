@@ -59,19 +59,32 @@ st.sidebar.info(
 
 # --- HOOFDSCHERM ---
 st.title("🛠️ Gereedschap & Locatie Beheer")
-st.markdown("Welkom! Zoek hieronder direct naar gereedschap en zie waar het ligt.")
+st.markdown("Welkom! Zoek hieronder direct in de inventaris.")
 
 # Automatisch het bestand inlezen
 bestand_naam = "gereedschap.csv"
+
+# Verwachte kolommen uit jouw Excel
+kolommen_lijst = [
+    "Artikel Nu",
+    "Omschrijving",
+    "Stock",
+    "Ligging",
+    "Datum",
+    "Groep",
+    "Set",
+    "Bijlage",
+    "Opmerkingen",
+]
 
 if os.path.exists(bestand_naam):
   try:
     df = pd.read_csv(bestand_naam, sep=None, engine="python")
   except Exception as e:
-    df = pd.DataFrame(columns=["Naam", "Ligging", "Datum toegevoegd", "Foto"])
+    df = pd.DataFrame(columns=kolommen_lijst)
 
-  # Zorg dat de basiskolommen altijd bestaan (zonder categorie)
-  for col in ["Naam", "Ligging", "Datum toegevoegd", "Foto"]:
+  # Zorg dat alle kolommen altijd bestaan
+  for col in kolommen_lijst:
     if col not in df.columns:
       df[col] = ""
 
@@ -80,25 +93,28 @@ if os.path.exists(bestand_naam):
   st.subheader("🔍 Zoeken in de inventaris")
 
   zoekterm = st.text_input(
-      "Zoek op naam of ligging...",
-      placeholder="Bijv. Accuboormachine of Kast 1...",
+      "Zoek op artikelnummer, omschrijving, ligging, groep of set...",
+      placeholder="Bijv. C511 of Accuboormachine...",
   )
 
-  # Filter logica toepassen
+  # Filter logica toepassen over meerdere kolommen
   df_gefilterd = df.copy()
 
   if zoekterm:
-    mask = df_gefilterd["Naam"].astype(str).str.contains(
-        zoekterm, case=False, na=False
-    ) | df_gefilterd["Ligging"].astype(str).str.contains(
-        zoekterm, case=False, na=False
+    mask = (
+        df_gefilterd["Artikel Nu"].astype(str).str.contains(zoekterm, case=False, na=False)
+        | df_gefilterd["Omschrijving"].astype(str).str.contains(zoekterm, case=False, na=False)
+        | df_gefilterd["Ligging"].astype(str).str.contains(zoekterm, case=False, na=False)
+        | df_gefilterd["Groep"].astype(str).str.contains(zoekterm, case=False, na=False)
+        | df_gefilterd["Set"].astype(str).str.contains(zoekterm, case=False, na=False)
+        | df_gefilterd["Opmerkingen"].astype(str).str.contains(zoekterm, case=False, na=False)
     )
     df_gefilterd = df_gefilterd[mask]
 
   st.markdown(f"**Aantal resultaten gevonden:** {len(df_gefilterd)}")
   st.markdown("---")
 
-  # --- MOBIELAAGTROUWE KAARTWEERGAVE ---
+  # --- KAARTWEERGAVE VOOR SMARTPHONE ---
   if len(df_gefilterd) == 0:
     st.info("Geen gereedschap gevonden dat aan je zoekopdracht voldoet.")
   else:
@@ -107,8 +123,11 @@ if os.path.exists(bestand_naam):
         st.markdown(
             f"""
                 <div class="tool-card">
-                    <h3 style="margin: 0; color: #31333F;">{row['Naam']}</h3>
-                    <p style="margin: 5px 0 0 0; color: #6c757d; font-size: 14px;"><b>Toegevoegd:</b> {row.get('Datum toegevoegd', 'Onbekend')}</p>
+                    <span style="background-color: #ff4b4b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">Art: {row['Artikel Nu']}</span>
+                    <h3 style="margin: 8px 0 0 0; color: #31333F;">{row['Omschrijving']}</h3>
+                    <p style="margin: 5px 0 0 0; color: #6c757d; font-size: 13px;">
+                        <b>Groep:</b> {row.get('Groep', '-')} | <b>Set:</b> {row.get('Set', '-')} | <b>Stock:</b> {row.get('Stock', '-')}
+                    </p>
                 </div>
                 """,
             unsafe_allow_html=True,
@@ -116,7 +135,7 @@ if os.path.exists(bestand_naam):
 
         c_img, c_info = st.columns([1, 2])
         with c_img:
-          foto_pad = str(row.get("Foto", ""))
+          foto_pad = str(row.get("Bijlage", ""))
           if foto_pad and os.path.exists(foto_pad):
             st.image(foto_pad, use_container_width=True)
           else:
@@ -124,6 +143,10 @@ if os.path.exists(bestand_naam):
 
         with c_info:
           st.markdown(f"📍 **Ligging:** `{row['Ligging']}`")
+          if row.get("Datum"):
+            st.markdown(f"📅 **Datum:** {row['Datum']}")
+          if row.get("Opmerkingen"):
+            st.markdown(f"📝 **Opmerking:** {row['Opmerkingen']}")
 
         st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
 
@@ -138,20 +161,26 @@ if os.path.exists(bestand_naam):
 
     with tab1:
       with st.form("gereedschap_form", clear_on_submit=True):
-        naam = st.text_input("Naam gereedschap *")
-        ligging = st.text_input(
-            "Ligging (Waar ligt het?) *",
-            placeholder="Bijv. Bus 3, Kast B, Plank 1",
-        )
+        c1, c2 = st.columns(2)
+        with c1:
+          artikel_nu = st.text_input("Artikel Nu *")
+          stock = st.text_input("Stock", value="1")
+          groep = st.text_input("Groep")
+        with c2:
+          omschrijving = st.text_input("Omschrijving *")
+          ligging = st.text_input("Ligging *", placeholder="Bijv. SCA 10")
+          set_val = st.text_input("Set")
+
+        opmerkingen = st.text_area("Opmerkingen")
         foto = st.file_uploader(
-            "Maak of upload foto", type=["jpg", "png", "jpeg"]
+            "Bijlage (Foto)", type=["jpg", "png", "jpeg"]
         )
 
-        submit_button = st.form_submit_button(label="💾 Gereedschap opslaan")
+        submit_button = st.form_submit_button(label="💾 Opslaan in inventaris")
 
         if submit_button:
-          if not naam or not ligging:
-            st.error("⚠️ Vul ten minste de naam en de ligging in!")
+          if not artikel_nu or not omschrijving or not ligging:
+            st.error("⚠️ Vul ten minste Artikel Nu, Omschrijving en Ligging in!")
           else:
             foto_pad = ""
             if foto is not None:
@@ -162,24 +191,29 @@ if os.path.exists(bestand_naam):
             huidige_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
 
             nieuwe_rij = {
-                "Naam": naam,
+                "Artikel Nu": artikel_nu,
+                "Omschrijving": omschrijving,
+                "Stock": stock,
                 "Ligging": ligging,
-                "Datum toegevoegd": huidige_datum,
-                "Foto": foto_pad,
+                "Datum": huidige_datum,
+                "Groep": groep,
+                "Set": set_val,
+                "Bijlage": foto_pad,
+                "Opmerkingen": opmerkingen,
             }
             df = pd.concat([df, pd.DataFrame([nieuwe_rij])], ignore_index=True)
 
             df.to_csv(bestand_naam, index=False)
             st.success(
-                f"✨ '{naam}' is toegevoegd! Download hieronder het bestand en"
-                " zet het in GitHub."
+                f"✨ Artikel '{artikel_nu} - {omschrijving}' is toegevoegd!"
+                " Download hieronder het bestand en zet het in GitHub."
             )
 
     with tab2:
       st.subheader("Verwijder een item uit de lijst")
       if len(df) > 0:
         items_lijst = [
-            f"{row['Naam']} (Ligging: {row['Ligging']}) - Rijnr: {i}"
+            f"Art: {row['Artikel Nu']} - {row['Omschrijving']} (Ligging: {row['Ligging']}) - Rijnr: {i}"
             for i, row in df.iterrows()
         ]
         te_verwijderen_item = st.selectbox(
@@ -190,12 +224,12 @@ if os.path.exists(bestand_naam):
             "❌ Verwijder geselecteerd gereedschap", type="primary"
         ):
           rij_index = int(te_verwijderen_item.split(" - Rijnr: ")[1])
-          verwijderde_naam = df.loc[rij_index, "Naam"]
+          verwijderde_omschrijving = df.loc[rij_index, "Omschrijving"]
           df = df.drop(rij_index).reset_index(drop=True)
 
           df.to_csv(bestand_naam, index=False)
           st.success(
-              f"🗑️ '{verwijderde_naam}' is verwijderd! Download het"
+              f"🗑️ '{verwijderde_omschrijving}' is verwijderd! Download het"
               " bijgewerkte bestand hieronder om het vast te leggen op GitHub."
           )
           st.rerun()
@@ -228,5 +262,6 @@ if os.path.exists(bestand_naam):
 else:
   st.error(
       "⚠️ Het bestand 'gereedschap.csv' is nog niet gevonden in de GitHub map."
-      " Upload het bestand in je repository om de lijst te laden."
+      " Zorg dat je jouw CSV-bestand met deze exacte kolommen uploadt naar je"
+      " repository."
   )

@@ -59,7 +59,7 @@ st.sidebar.info(
 
 # --- HOOFDSCHERM ---
 st.title("🛠️ Gereedschap & Locatie Beheer")
-st.markdown("Welkom! Zoek hieronder direct in de inventaris.")
+st.markdown("Welkom! Zoek en filter hieronder in de inventaris.")
 
 # Automatisch het bestand inlezen
 bestand_naam = "gereedschap.csv"
@@ -98,29 +98,59 @@ if os.path.exists(bestand_naam):
     if c not in df.columns:
       df[c] = ""
 
-  # --- ZOEKBALK EN OVERZICHT ---
+  # --- ZOEKBALK EN FILTEROPTIES ---
   st.markdown("---")
-  st.subheader("🔍 Zoeken in de inventaris")
+  st.subheader("🔍 Zoeken & Filteren")
 
   zoekterm = st.text_input(
-      "Zoek op artikelnummer, omschrijving, ligging, groep of set...",
+      "Vrij zoeken (artikelnummer, omschrijving, opmerking...)",
       placeholder="Bijv. C511 of Accuboormachine...",
   )
 
+  # Uitklapbaar menu voor specifieke filters
+  with st.expander("🎯 Geavanceerde filters (Groep, Set, Ligging)"):
+    f_col1, f_col2, f_col3 = st.columns(3)
+    
+    # Unieke lijsten ophalen voor de filters
+    unieke_groepen = ["Alle"] + sorted([str(x) for x in df[col_groep].dropna().unique() if str(x).strip() and str(x).lower() != "nan"])
+    unieke_sets = ["Alle"] + sorted([str(x) for x in df[col_set].dropna().unique() if str(x).strip() and str(x).lower() != "nan"])
+    unieke_liggingen = ["Alle"] + sorted([str(x) for x in df[col_ligging].dropna().unique() if str(x).strip() and str(x).lower() != "nan"])
+
+    with f_col1:
+      gekozen_groep = st.selectbox("Filter op Groep", unieke_groepen)
+    with f_col2:
+      gekozen_set = st.selectbox("Filter op Set", unieke_sets)
+    with f_col3:
+      gekozen_ligging = st.selectbox("Filter op Ligging", unieke_liggingen)
+
+  # Datastroom filteren
   df_gefilterd = df.copy()
 
+  # 1. Filter op Vrij Zoeken
   if zoekterm:
     mask = False
     for c in df_gefilterd.columns:
       mask = mask | df_gefilterd[c].astype(str).str.contains(zoekterm, case=False, na=False)
     df_gefilterd = df_gefilterd[mask]
 
+  # 2. Filter op Groep
+  if gekozen_groep != "Alle":
+    df_gefilterd = df_gefilterd[df_gefilterd[col_groep].astype(str) == gekozen_groep]
+
+  # 3. Filter op Set
+  if gekozen_set != "Alle":
+    df_gefilterd = df_gefilterd[df_gefilterd[col_set].astype(str) == gekozen_set]
+
+  # 4. Filter op Ligging
+  if gekozen_ligging != "Alle":
+    df_gefilterd = df_gefilterd[df_gefilterd[col_ligging].astype(str) == gekozen_ligging]
+
   st.markdown(f"**Aantal resultaten gevonden:** {len(df_gefilterd)}")
   st.markdown("---")
 
   # --- KAARTWEERGAVE VOOR SMARTPHONE ---
   if len(df_gefilterd) == 0:
-    st.info("Geen gereedschap gevonden dat aan je zoekopdracht voldoet.")
+    st.info("Geen gereedschap gevonden dat aan je zoekopdracht/filters voldoet.")
   else:
     for i, row in df_gefilterd.iterrows():
       art_val = row.get(col_artikel, "-")
@@ -184,7 +214,6 @@ if os.path.exists(bestand_naam):
         ["➕ Gereedschap toevoegen", "✏️ Gereedschap wijzigen", "🗑️ Gereedschap verwijderen"]
     )
 
-    # Hulpfuncties voor liggingen
     bestaane_liggingen_lijst = sorted(df[col_ligging].dropna().astype(str).unique().tolist())
     bestaane_liggingen_lijst = [l for l in bestaane_liggingen_lijst if l.strip() and l.lower() != "nan"]
     opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaane_liggingen_lijst + ["➕ Nieuwe ligging opgeven..."]
@@ -230,7 +259,6 @@ if os.path.exists(bestand_naam):
               with open(foto_pad, "wb") as f:
                 f.write(foto.getbuffer())
 
-            # Automatisch de huidige datum/tijd als dag-maand-jaar
             huidige_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
 
             nieuwe_rij = {
@@ -276,7 +304,6 @@ if os.path.exists(bestand_naam):
             b_omschrijving = st.text_input("Omschrijving *", value=str(huidige_rij.get(col_omschrijving, "")))
             b_set = st.text_input("Set", value=str(huidige_rij.get(col_set, "")))
 
-          # Huidige ligging alvast selecteren als dat kan
           huidige_ligging_val = str(huidige_rij.get(col_ligging, ""))
           b_ligging_keuze = st.selectbox(
               "Ligging selecteren *", 
@@ -308,7 +335,6 @@ if os.path.exists(bestand_naam):
             if not b_artikel or not b_omschrijving or not b_ligging:
               st.error("⚠️ Artikel Nummer, Omschrijving en Ligging mogen niet leeg zijn!")
             else:
-              # Foto afhandeling indien gewijzigd
               final_bijlage = b_bijlage
               if b_nieuwe_foto is not None:
                 foto_pad = os.path.join("fotos", b_nieuwe_foto.name)
@@ -316,7 +342,6 @@ if os.path.exists(bestand_naam):
                   f.write(b_nieuwe_foto.getbuffer())
                 final_bijlage = b_nieuwe_foto.name
 
-              # Automatisch de huidige datum/tijd bijwerken als wijzigingsdatum
               wijzig_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
 
               df.loc[rij_index, col_artikel] = b_artikel

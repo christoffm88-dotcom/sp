@@ -64,9 +64,9 @@ st.markdown("Welkom! Zoek hieronder direct in de inventaris.")
 # Automatisch het bestand inlezen
 bestand_naam = "gereedschap.csv"
 
-# Verwachte kolommen uit jouw Excel
+# Verwachte kolommen exact volgens jouw opgave
 kolommen_lijst = [
-    "Artikel Nu",
+    "Artikel Nummer",
     "Omschrijving",
     "Stock",
     "Ligging",
@@ -85,10 +85,22 @@ if os.path.exists(bestand_naam):
   except Exception as e:
     df = pd.DataFrame(columns=kolommen_lijst)
 
-  # Zorg dat alle kolommen altijd bestaan
-  for col in kolommen_lijst:
-    if col not in df.columns:
-      df[col] = ""
+  # Fallback voor eventuele lichte afwijkingen in kolomnamen
+  kolommen = list(df.columns)
+  col_artikel = "Artikel Nummer" if "Artikel Nummer" in kolommen else (kolommen[0] if len(kolommen) > 0 else "Artikel Nummer")
+  col_omschrijving = "Omschrijving" if "Omschrijving" in kolommen else (kolommen[1] if len(kolommen) > 1 else "Omschrijving")
+  col_stock = "Stock" if "Stock" in kolommen else (kolommen[2] if len(kolommen) > 2 else "Stock")
+  col_ligging = "Ligging" if "Ligging" in kolommen else (kolommen[3] if len(kolommen) > 3 else "Ligging")
+  col_datum = "Datum" if "Datum" in kolommen else (kolommen[4] if len(kolommen) > 4 else "Datum")
+  col_groep = "Groep" if "Groep" in kolommen else (kolommen[5] if len(kolommen) > 5 else "Groep")
+  col_set = "Set" if "Set" in kolommen else (kolommen[6] if len(kolommen) > 6 else "Set")
+  col_bijlage = "Bijlage" if "Bijlage" in kolommen else (kolommen[7] if len(kolommen) > 7 else "Bijlage")
+  col_opmerkingen = "Opmerkingen" if "Opmerkingen" in kolommen else (kolommen[8] if len(kolommen) > 8 else "Opmerkingen")
+
+  # Zorg dat alle kolommen altijd bestaan in de DataFrame
+  for c in [col_artikel, col_omschrijving, col_stock, col_ligging, col_datum, col_groep, col_set, col_bijlage, col_opmerkingen]:
+    if c not in df.columns:
+      df[c] = ""
 
   # --- ZOEKBALK EN OVERZICHT ---
   st.markdown("---")
@@ -99,18 +111,13 @@ if os.path.exists(bestand_naam):
       placeholder="Bijv. C511 of Accuboormachine...",
   )
 
-  # Filter logica toepassen over meerdere kolommen
+  # Filter logica toepassen over alle kolommen
   df_gefilterd = df.copy()
 
   if zoekterm:
-    mask = (
-        df_gefilterd["Artikel Nu"].astype(str).str.contains(zoekterm, case=False, na=False)
-        | df_gefilterd["Omschrijving"].astype(str).str.contains(zoekterm, case=False, na=False)
-        | df_gefilterd["Ligging"].astype(str).str.contains(zoekterm, case=False, na=False)
-        | df_gefilterd["Groep"].astype(str).str.contains(zoekterm, case=False, na=False)
-        | df_gefilterd["Set"].astype(str).str.contains(zoekterm, case=False, na=False)
-        | df_gefilterd["Opmerkingen"].astype(str).str.contains(zoekterm, case=False, na=False)
-    )
+    mask = False
+    for c in df_gefilterd.columns:
+      mask = mask | df_gefilterd[c].astype(str).str.contains(zoekterm, case=False, na=False)
     df_gefilterd = df_gefilterd[mask]
 
   st.markdown(f"**Aantal resultaten gevonden:** {len(df_gefilterd)}")
@@ -121,14 +128,24 @@ if os.path.exists(bestand_naam):
     st.info("Geen gereedschap gevonden dat aan je zoekopdracht voldoet.")
   else:
     for i, row in df_gefilterd.iterrows():
+      art_val = row.get(col_artikel, "-")
+      oms_val = row.get(col_omschrijving, "-")
+      groep_val = row.get(col_groep, "-")
+      set_val = row.get(col_set, "-")
+      stock_val = row.get(col_stock, "-")
+      ligging_val = row.get(col_ligging, "-")
+      datum_val = row.get(col_datum, "")
+      opm_val = row.get(col_opmerkingen, "")
+      foto_pad = str(row.get(col_bijlage, ""))
+
       with st.container():
         st.markdown(
             f"""
                 <div class="tool-card">
-                    <span style="background-color: #ff4b4b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">Art: {row['Artikel Nu']}</span>
-                    <h3 style="margin: 8px 0 0 0; color: #31333F;">{row['Omschrijving']}</h3>
+                    <span style="background-color: #ff4b4b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">Art: {art_val}</span>
+                    <h3 style="margin: 8px 0 0 0; color: #31333F;">{oms_val}</h3>
                     <p style="margin: 5px 0 0 0; color: #6c757d; font-size: 13px;">
-                        <b>Groep:</b> {row.get('Groep', '-')} | <b>Set:</b> {row.get('Set', '-')} | <b>Stock:</b> {row.get('Stock', '-')}
+                        <b>Groep:</b> {groep_val} | <b>Set:</b> {set_val} | <b>Stock:</b> {stock_val}
                     </p>
                 </div>
                 """,
@@ -137,18 +154,17 @@ if os.path.exists(bestand_naam):
 
         c_img, c_info = st.columns([1, 2])
         with c_img:
-          foto_pad = str(row.get("Bijlage", ""))
           if foto_pad and os.path.exists(foto_pad):
             st.image(foto_pad, use_container_width=True)
           else:
             st.markdown("*(Geen foto)*")
 
         with c_info:
-          st.markdown(f"📍 **Ligging:** `{row['Ligging']}`")
-          if row.get("Datum"):
-            st.markdown(f"📅 **Datum:** {row['Datum']}")
-          if row.get("Opmerkingen"):
-            st.markdown(f"📝 **Opmerking:** {row['Opmerkingen']}")
+          st.markdown(f"📍 **Ligging:** `{ligging_val}`")
+          if datum_val and str(datum_val).lower() != "nan":
+            st.markdown(f"📅 **Datum:** {datum_val}")
+          if opm_val and str(opm_val).lower() != "nan":
+            st.markdown(f"📝 **Opmerking:** {opm_val}")
 
         st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
 
@@ -165,13 +181,13 @@ if os.path.exists(bestand_naam):
       with st.form("gereedschap_form", clear_on_submit=True):
         c1, c2 = st.columns(2)
         with c1:
-          artikel_nu = st.text_input("Artikel Nu *")
+          artikel_nummer = st.text_input("Artikel Nummer *")
           stock = st.text_input("Stock", value="1")
           groep = st.text_input("Groep")
         with c2:
           omschrijving = st.text_input("Omschrijving *")
           ligging = st.text_input("Ligging *", placeholder="Bijv. SCA 10")
-          set_val = st.text_input("Set")
+          set_val_input = st.text_input("Set")
 
         opmerkingen = st.text_area("Opmerkingen")
         foto = st.file_uploader(
@@ -181,8 +197,8 @@ if os.path.exists(bestand_naam):
         submit_button = st.form_submit_button(label="💾 Opslaan in inventaris")
 
         if submit_button:
-          if not artikel_nu or not omschrijving or not ligging:
-            st.error("⚠️ Vul ten minste Artikel Nu, Omschrijving en Ligging in!")
+          if not artikel_nummer or not omschrijving or not ligging:
+            st.error("⚠️ Vul ten minste Artikel Nummer, Omschrijving en Ligging in!")
           else:
             foto_pad = ""
             if foto is not None:
@@ -193,21 +209,21 @@ if os.path.exists(bestand_naam):
             huidige_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
 
             nieuwe_rij = {
-                "Artikel Nu": artikel_nu,
-                "Omschrijving": omschrijving,
-                "Stock": stock,
-                "Ligging": ligging,
-                "Datum": huidige_datum,
-                "Groep": groep,
-                "Set": set_val,
-                "Bijlage": foto_pad,
-                "Opmerkingen": opmerkingen,
+                col_artikel: artikel_nummer,
+                col_omschrijving: omschrijving,
+                col_stock: stock,
+                col_ligging: ligging,
+                col_datum: huidige_datum,
+                col_groep: groep,
+                col_set: set_val_input,
+                col_bijlage: foto_pad,
+                col_opmerkingen: opmerkingen,
             }
             df = pd.concat([df, pd.DataFrame([nieuwe_rij])], ignore_index=True)
 
             df.to_csv(bestand_naam, index=False)
             st.success(
-                f"✨ Artikel '{artikel_nu} - {omschrijving}' is toegevoegd!"
+                f"✨ Artikel '{artikel_nummer} - {omschrijving}' is toegevoegd!"
                 " Download hieronder het bestand en zet het in GitHub."
             )
 
@@ -215,7 +231,7 @@ if os.path.exists(bestand_naam):
       st.subheader("Verwijder een item uit de lijst")
       if len(df) > 0:
         items_lijst = [
-            f"Art: {row['Artikel Nu']} - {row['Omschrijving']} (Ligging: {row['Ligging']}) - Rijnr: {i}"
+            f"Art: {row.get(col_artikel, '')} - {row.get(col_omschrijving, '')} (Ligging: {row.get(col_ligging, '')}) - Rijnr: {i}"
             for i, row in df.iterrows()
         ]
         te_verwijderen_item = st.selectbox(
@@ -226,7 +242,7 @@ if os.path.exists(bestand_naam):
             "❌ Verwijder geselecteerd gereedschap", type="primary"
         ):
           rij_index = int(te_verwijderen_item.split(" - Rijnr: ")[1])
-          verwijderde_omschrijving = df.loc[rij_index, "Omschrijving"]
+          verwijderde_omschrijving = df.loc[rij_index, col_omschrijving]
           df = df.drop(rij_index).reset_index(drop=True)
 
           df.to_csv(bestand_naam, index=False)
@@ -264,6 +280,5 @@ if os.path.exists(bestand_naam):
 else:
   st.error(
       "⚠️ Het bestand 'gereedschap.csv' is nog niet gevonden in de GitHub map."
-      " Zorg dat je jouw CSV-bestand met deze exacte kolommen uploadt naar je"
-      " repository."
+      " Zorg dat je jouw CSV-bestand uploadt naar je repository."
   )

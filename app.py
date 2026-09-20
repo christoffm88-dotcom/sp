@@ -80,6 +80,8 @@ kolommen_lijst = [
 if os.path.exists(bestand_naam):
   try:
     df = pd.read_csv(bestand_naam, sep=None, engine="python")
+    # Spaties in kolomnamen weghalen voor de zekerheid
+    df.columns = df.columns.str.strip()
   except Exception as e:
     df = pd.DataFrame(columns=kolommen_lijst)
 

@@ -64,7 +64,6 @@ st.markdown("Welkom! Zoek hieronder direct in de inventaris.")
 # Automatisch het bestand inlezen
 bestand_naam = "gereedschap.csv"
 
-# Verwachte kolommen exact volgens jouw opgave
 kolommen_lijst = [
     "Artikel Nummer",
     "Omschrijving",
@@ -80,12 +79,10 @@ kolommen_lijst = [
 if os.path.exists(bestand_naam):
   try:
     df = pd.read_csv(bestand_naam, sep=None, engine="python")
-    # Spaties in kolomnamen weghalen voor de zekerheid
     df.columns = df.columns.str.strip()
   except Exception as e:
     df = pd.DataFrame(columns=kolommen_lijst)
 
-  # Fallback voor eventuele lichte afwijkingen in kolomnamen
   kolommen = list(df.columns)
   col_artikel = "Artikel Nummer" if "Artikel Nummer" in kolommen else (kolommen[0] if len(kolommen) > 0 else "Artikel Nummer")
   col_omschrijving = "Omschrijving" if "Omschrijving" in kolommen else (kolommen[1] if len(kolommen) > 1 else "Omschrijving")
@@ -97,7 +94,6 @@ if os.path.exists(bestand_naam):
   col_bijlage = "Bijlage" if "Bijlage" in kolommen else (kolommen[7] if len(kolommen) > 7 else "Bijlage")
   col_opmerkingen = "Opmerkingen" if "Opmerkingen" in kolommen else (kolommen[8] if len(kolommen) > 8 else "Opmerkingen")
 
-  # Zorg dat alle kolommen altijd bestaan in de DataFrame
   for c in [col_artikel, col_omschrijving, col_stock, col_ligging, col_datum, col_groep, col_set, col_bijlage, col_opmerkingen]:
     if c not in df.columns:
       df[c] = ""
@@ -111,7 +107,6 @@ if os.path.exists(bestand_naam):
       placeholder="Bijv. C511 of Accuboormachine...",
   )
 
-  # Filter logica toepassen over alle kolommen
   df_gefilterd = df.copy()
 
   if zoekterm:
@@ -136,7 +131,19 @@ if os.path.exists(bestand_naam):
       ligging_val = row.get(col_ligging, "-")
       datum_val = row.get(col_datum, "")
       opm_val = row.get(col_opmerkingen, "")
-      foto_pad = str(row.get(col_bijlage, ""))
+      
+      ruwe_bijlage = str(row.get(col_bijlage, "")).strip()
+      foto_pad = ""
+      if ruwe_bijlage and ruwe_bijlage.lower() != "nan":
+        mogelijke_paden = [
+            ruwe_bijlage,
+            os.path.join("fotos", ruwe_bijlage),
+            os.path.join("fotos", os.path.basename(ruwe_bijlage))
+        ]
+        for p in mogelijke_paden:
+          if os.path.exists(p):
+            foto_pad = p
+            break
 
       with st.container():
         st.markdown(
@@ -157,7 +164,7 @@ if os.path.exists(bestand_naam):
           if foto_pad and os.path.exists(foto_pad):
             st.image(foto_pad, use_container_width=True)
           else:
-            st.markdown("*(Geen foto)*")
+            st.markdown(f"*(Geen foto gevonden)*")
 
         with c_info:
           st.markdown(f"📍 **Ligging:** `{ligging_val}`")
@@ -178,6 +185,12 @@ if os.path.exists(bestand_naam):
     )
 
     with tab1:
+      # Bepaal unieke, gesorteerde lijst van bestaande liggingen voor de keuzelijst (+ optie voor een nieuwe)
+      bestaande_liggingen = sorted(df[col_ligging].dropna().astype(str).unique().tolist())
+      bestaande_liggingen = [l for l in bestaande_liggingen if l.strip() and l.lower() != "nan"]
+      
+      opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaande_liggingen + ["➕ Nieuwe ligging opgeven..."]
+
       with st.form("gereedschap_form", clear_on_submit=True):
         c1, c2 = st.columns(2)
         with c1:
@@ -186,8 +199,15 @@ if os.path.exists(bestand_naam):
           groep = st.text_input("Groep")
         with c2:
           omschrijving = st.text_input("Omschrijving *")
-          ligging = st.text_input("Ligging *", placeholder="Bijv. SCA 10")
           set_val_input = st.text_input("Set")
+
+        # Keuzelijst voor liggingen
+        keuze_ligging = st.selectbox("Ligging selecteren *", opties_ligging)
+        
+        # Als de gebruiker kiest om een nieuwe ligging op te geven, tonen we een extra invoerveld
+        extra_nieuwe_ligging = ""
+        if keuze_ligging == "➕ Nieuwe ligging opgeven...":
+          extra_nieuwe_ligging = st.text_input("Geef de nieuwe ligging op *")
 
         opmerkingen = st.text_area("Opmerkingen")
         foto = st.file_uploader(
@@ -197,8 +217,16 @@ if os.path.exists(bestand_naam):
         submit_button = st.form_submit_button(label="💾 Opslaan in inventaris")
 
         if submit_button:
+          # Bepaal de definitieve ligging op basis van de geselecteerde optie
+          if keuze_ligging == "➕ Nieuwe ligging opgeven...":
+            ligging = extra_nieuwe_ligging
+          elif keuze_ligging == "-- Kies bestaande of typ hieronder --":
+            ligging = ""
+          else:
+            ligging = keuze_ligging
+
           if not artikel_nummer or not omschrijving or not ligging:
-            st.error("⚠️ Vul ten minste Artikel Nummer, Omschrijving en Ligging in!")
+            st.error("⚠️ Vul ten minste Artikel Nummer, Omschrijving en een geldige Ligging in!")
           else:
             foto_pad = ""
             if foto is not None:
@@ -216,7 +244,7 @@ if os.path.exists(bestand_naam):
                 col_datum: huidige_datum,
                 col_groep: groep,
                 col_set: set_val_input,
-                col_bijlage: foto_pad,
+                col_bijlage: foto.name if foto else "",
                 col_opmerkingen: opmerkingen,
             }
             df = pd.concat([df, pd.DataFrame([nieuwe_rij])], ignore_index=True)

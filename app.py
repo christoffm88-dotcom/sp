@@ -180,17 +180,17 @@ if os.path.exists(bestand_naam):
     st.markdown("---")
     st.header("➕ Beheerderspaneel")
 
-    tab1, tab2 = st.tabs(
-        ["➕ Gereedschap toevoegen", "🗑️ Gereedschap verwijderen"]
+    tab1, tab2, tab3 = st.tabs(
+        ["➕ Gereedschap toevoegen", "✏️ Gereedschap wijzigen", "🗑️ Gereedschap verwijderen"]
     )
 
-    with tab1:
-      # Bepaal unieke, gesorteerde lijst van bestaande liggingen voor de keuzelijst (+ optie voor een nieuwe)
-      bestaande_liggingen = sorted(df[col_ligging].dropna().astype(str).unique().tolist())
-      bestaande_liggingen = [l for l in bestaande_liggingen if l.strip() and l.lower() != "nan"]
-      
-      opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaande_liggingen + ["➕ Nieuwe ligging opgeven..."]
+    # Hulpfuncties voor liggingen
+    bestaane_liggingen_lijst = sorted(df[col_ligging].dropna().astype(str).unique().tolist())
+    bestaane_liggingen_lijst = [l for l in bestaane_liggingen_lijst if l.strip() and l.lower() != "nan"]
+    opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaane_liggingen_lijst + ["➕ Nieuwe ligging opgeven..."]
 
+    # TAB 1: TOEVOEGEN
+    with tab1:
       with st.form("gereedschap_form", clear_on_submit=True):
         c1, c2 = st.columns(2)
         with c1:
@@ -201,23 +201,19 @@ if os.path.exists(bestand_naam):
           omschrijving = st.text_input("Omschrijving *")
           set_val_input = st.text_input("Set")
 
-        # Keuzelijst voor liggingen
-        keuze_ligging = st.selectbox("Ligging selecteren *", opties_ligging)
-        
-        # Als de gebruiker kiest om een nieuwe ligging op te geven, tonen we een extra invoerveld
+        keuze_ligging = st.selectbox("Ligging selecteren *", opties_ligging, key="add_ligging")
         extra_nieuwe_ligging = ""
         if keuze_ligging == "➕ Nieuwe ligging opgeven...":
-          extra_nieuwe_ligging = st.text_input("Geef de nieuwe ligging op *")
+          extra_nieuwe_ligging = st.text_input("Geef de nieuwe ligging op *", key="add_new_lig")
 
         opmerkingen = st.text_area("Opmerkingen")
         foto = st.file_uploader(
-            "Bijlage (Foto)", type=["jpg", "png", "jpeg"]
+            "Bijlage (Foto)", type=["jpg", "png", "jpeg"], key="add_foto"
         )
 
         submit_button = st.form_submit_button(label="💾 Opslaan in inventaris")
 
         if submit_button:
-          # Bepaal de definitieve ligging op basis van de geselecteerde optie
           if keuze_ligging == "➕ Nieuwe ligging opgeven...":
             ligging = extra_nieuwe_ligging
           elif keuze_ligging == "-- Kies bestaande of typ hieronder --":
@@ -234,6 +230,7 @@ if os.path.exists(bestand_naam):
               with open(foto_pad, "wb") as f:
                 f.write(foto.getbuffer())
 
+            # Automatisch de huidige datum/tijd als dag-maand-jaar
             huidige_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
 
             nieuwe_rij = {
@@ -251,11 +248,94 @@ if os.path.exists(bestand_naam):
 
             df.to_csv(bestand_naam, index=False)
             st.success(
-                f"✨ Artikel '{artikel_nummer} - {omschrijving}' is toegevoegd!"
+                f"✨ Artikel '{artikel_nummer} - {omschrijving}' is toegevoegd op {huidige_datum}!"
                 " Download hieronder het bestand en zet het in GitHub."
             )
 
+    # TAB 2: WIJZIGEN
     with tab2:
+      st.subheader("Bestaand gereedschap aanpassen")
+      if len(df) > 0:
+        bewerk_items_lijst = [
+            f"Art: {row.get(col_artikel, '')} - {row.get(col_omschrijving, '')} (Ligging: {row.get(col_ligging, '')}) - Rijnr: {i}"
+            for i, row in df.iterrows()
+        ]
+        gekozen_item_str = st.selectbox(
+            "Selecteer het gereedschap om te wijzigen", bewerk_items_lijst
+        )
+        rij_index = int(gekozen_item_str.split(" - Rijnr: ")[1])
+        huidige_rij = df.loc[rij_index]
+
+        with st.form("bewerk_form"):
+          bc1, bc2 = st.columns(2)
+          with bc1:
+            b_artikel = st.text_input("Artikel Nummer *", value=str(huidige_rij.get(col_artikel, "")))
+            b_stock = st.text_input("Stock", value=str(huidige_rij.get(col_stock, "")))
+            b_groep = st.text_input("Groep", value=str(huidige_rij.get(col_groep, "")))
+          with bc2:
+            b_omschrijving = st.text_input("Omschrijving *", value=str(huidige_rij.get(col_omschrijving, "")))
+            b_set = st.text_input("Set", value=str(huidige_rij.get(col_set, "")))
+
+          # Huidige ligging alvast selecteren als dat kan
+          huidige_ligging_val = str(huidige_rij.get(col_ligging, ""))
+          b_ligging_keuze = st.selectbox(
+              "Ligging selecteren *", 
+              opties_ligging, 
+              index=opties_ligging.index(huidige_ligging_val) if huidige_ligging_val in opties_ligging else 0,
+              key="edit_ligging"
+          )
+          b_extra_ligging = ""
+          if b_ligging_keuze == "➕ Nieuwe ligging opgeven...":
+            b_extra_ligging = st.text_input("Geef de nieuwe ligging op *", key="edit_new_lig")
+
+          b_opmerkingen = st.text_area("Opmerkingen", value=str(huidige_rij.get(col_opmerkingen, "")))
+          b_bijlage = st.text_input("Huidige Bijlage / Foto", value=str(huidige_rij.get(col_bijlage, "")))
+          
+          b_nieuwe_foto = st.file_uploader(
+              "Nieuwe Bijlage (Foto uploaden ter vervanging)", type=["jpg", "png", "jpeg"], key="edit_foto"
+          )
+
+          bewerk_submit = st.form_submit_button(label="💾 Wijzigingen opslaan")
+
+          if bewerk_submit:
+            if b_ligging_keuze == "➕ Nieuwe ligging opgeven...":
+              b_ligging = b_extra_ligging
+            elif b_ligging_keuze == "-- Kies bestaande of typ hieronder --":
+              b_ligging = ""
+            else:
+              b_ligging = b_ligging_keuze
+
+            if not b_artikel or not b_omschrijving or not b_ligging:
+              st.error("⚠️ Artikel Nummer, Omschrijving en Ligging mogen niet leeg zijn!")
+            else:
+              # Foto afhandeling indien gewijzigd
+              final_bijlage = b_bijlage
+              if b_nieuwe_foto is not None:
+                foto_pad = os.path.join("fotos", b_nieuwe_foto.name)
+                with open(foto_pad, "wb") as f:
+                  f.write(b_nieuwe_foto.getbuffer())
+                final_bijlage = b_nieuwe_foto.name
+
+              # Automatisch de huidige datum/tijd bijwerken als wijzigingsdatum
+              wijzig_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
+
+              df.loc[rij_index, col_artikel] = b_artikel
+              df.loc[rij_index, col_omschrijving] = b_omschrijving
+              df.loc[rij_index, col_stock] = b_stock
+              df.loc[rij_index, col_ligging] = b_ligging
+              df.loc[rij_index, col_datum] = wijzig_datum
+              df.loc[rij_index, col_groep] = b_groep
+              df.loc[rij_index, col_set] = b_set
+              df.loc[rij_index, col_bijlage] = final_bijlage
+              df.loc[rij_index, col_opmerkingen] = b_opmerkingen
+
+              df.to_csv(bestand_naam, index=False)
+              st.success(f"✅ Wijzigingen opgeslagen! Nieuwe wijzigingsdatum: {wijzig_datum}. Download hieronder de nieuwe versie.")
+      else:
+        st.info("De lijst is leeg, er valt niets te wijzigen.")
+
+    # TAB 3: VERWIJDEREN
+    with tab3:
       st.subheader("Verwijder een item uit de lijst")
       if len(df) > 0:
         items_lijst = [
@@ -263,7 +343,7 @@ if os.path.exists(bestand_naam):
             for i, row in df.iterrows()
         ]
         te_verwijderen_item = st.selectbox(
-            "Selecteer het gereedschap om te wissen", items_lijst
+            "Selecteer het gereedschap om te wissen", items_lijst, key="del_sel"
         )
 
         if st.button(
@@ -286,7 +366,7 @@ if os.path.exists(bestand_naam):
     st.markdown("---")
     st.subheader("📥 Bestand bijwerken op GitHub")
     st.markdown(
-        "Nadat je hebt toegevoegd of verwijderd, kun je hier de nieuwe versie"
+        "Nadat je hebt toegevoegd, gewijzigd of verwijderd, kun je hier de nieuwe versie"
         " downloaden en slepen naar je GitHub repository ter vervanging van de"
         " oude."
     )
@@ -301,7 +381,7 @@ if os.path.exists(bestand_naam):
   else:
     st.markdown("---")
     st.info(
-        "🔒 *Wil je gereedschap toevoegen of verwijderen? Log dan in via de"
+        "🔒 *Wil je gereedschap toevoegen, wijzigen of verwijderen? Log dan in via de"
         " zijbalk met het beheerderswachtwoord.*"
     )
 

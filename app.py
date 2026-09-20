@@ -44,11 +44,26 @@ st.sidebar.markdown("---")
 admin_mode = st.sidebar.checkbox("Inloggen als Beheerder")
 
 bewerk_rechten = False
+beheer_actie = "Zoeken & Overzicht"
+
 if admin_mode:
   wachtwoord = st.sidebar.text_input("Voer wachtwoord in", type="password")
   if wachtwoord == "gereedschap123":
     bewerk_rechten = True
     st.sidebar.success("✅ Ingelogd als beheerder")
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### ⚡ Snelkoppelingen")
+    beheer_actie = st.sidebar.radio(
+        "Kies een actie:",
+        [
+            "🔍 Zoeken & Overzicht",
+            "➕ Gereedschap toevoegen",
+            "✏️ Gereedschap wijzigen",
+            "🗑️ Gereedschap verwijderen",
+            "📥 Bestand downloaden",
+        ],
+    )
   else:
     st.sidebar.error("❌ Onjuist wachtwoord")
 
@@ -59,7 +74,6 @@ st.sidebar.info(
 
 # --- HOOFDSCHERM ---
 st.title("🛠️ Gereedschap & Locatie Beheer")
-st.markdown("Welkom! Zoek en filter hieronder in de inventaris.")
 
 # Automatisch het bestand inlezen
 bestand_naam = "gereedschap.csv"
@@ -98,303 +112,290 @@ if os.path.exists(bestand_naam):
     if c not in df.columns:
       df[c] = ""
 
-  # --- ZOEKBALK EN FILTEROPTIES ---
-  st.markdown("---")
-  st.subheader("🔍 Zoeken & Filteren")
+  bestaane_liggingen_lijst = sorted(df[col_ligging].dropna().astype(str).unique().tolist())
+  bestaane_liggingen_lijst = [l for l in bestaane_liggingen_lijst if l.strip() and l.lower() != "nan"]
+  opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaane_liggingen_lijst + ["➕ Nieuwe ligging opgeven..."]
 
-  zoekterm = st.text_input(
-      "Vrij zoeken (artikelnummer, omschrijving, opmerking...)",
-      placeholder="Bijv. C511 of Accuboormachine...",
-  )
-
-  # Uitklapbaar menu voor specifieke filters
-  with st.expander("🎯 Geavanceerde filters (Groep, Set, Ligging)"):
-    f_col1, f_col2, f_col3 = st.columns(3)
-    
-    # Unieke lijsten ophalen voor de filters
-    unieke_groepen = ["Alle"] + sorted([str(x) for x in df[col_groep].dropna().unique() if str(x).strip() and str(x).lower() != "nan"])
-    unieke_sets = ["Alle"] + sorted([str(x) for x in df[col_set].dropna().unique() if str(x).strip() and str(x).lower() != "nan"])
-    unieke_liggingen = ["Alle"] + sorted([str(x) for x in df[col_ligging].dropna().unique() if str(x).strip() and str(x).lower() != "nan"])
-
-    with f_col1:
-      gekozen_groep = st.selectbox("Filter op Groep", unieke_groepen)
-    with f_col2:
-      gekozen_set = st.selectbox("Filter op Set", unieke_sets)
-    with f_col3:
-      gekozen_ligging = st.selectbox("Filter op Ligging", unieke_liggingen)
-
-  # Datastroom filteren
-  df_gefilterd = df.copy()
-
-  # 1. Filter op Vrij Zoeken
-  if zoekterm:
-    mask = False
-    for c in df_gefilterd.columns:
-      mask = mask | df_gefilterd[c].astype(str).str.contains(zoekterm, case=False, na=False)
-    df_gefilterd = df_gefilterd[mask]
-
-  # 2. Filter op Groep
-  if gekozen_groep != "Alle":
-    df_gefilterd = df_gefilterd[df_gefilterd[col_groep].astype(str) == gekozen_groep]
-
-  # 3. Filter op Set
-  if gekozen_set != "Alle":
-    df_gefilterd = df_gefilterd[df_gefilterd[col_set].astype(str) == gekozen_set]
-
-  # 4. Filter op Ligging
-  if gekozen_ligging != "Alle":
-    df_gefilterd = df_gefilterd[df_gefilterd[col_ligging].astype(str) == gekozen_ligging]
-
-  st.markdown(f"**Aantal resultaten gevonden:** {len(df_gefilterd)}")
-  st.markdown("---")
-
-  # --- KAARTWEERGAVE VOOR SMARTPHONE ---
-  if len(df_gefilterd) == 0:
-    st.info("Geen gereedschap gevonden dat aan je zoekopdracht/filters voldoet.")
-  else:
-    for i, row in df_gefilterd.iterrows():
-      art_val = row.get(col_artikel, "-")
-      oms_val = row.get(col_omschrijving, "-")
-      groep_val = row.get(col_groep, "-")
-      set_val = row.get(col_set, "-")
-      stock_val = row.get(col_stock, "-")
-      ligging_val = row.get(col_ligging, "-")
-      datum_val = row.get(col_datum, "")
-      opm_val = row.get(col_opmerkingen, "")
-      
-      ruwe_bijlage = str(row.get(col_bijlage, "")).strip()
-      foto_pad = ""
-      if ruwe_bijlage and ruwe_bijlage.lower() != "nan":
-        mogelijke_paden = [
-            ruwe_bijlage,
-            os.path.join("fotos", ruwe_bijlage),
-            os.path.join("fotos", os.path.basename(ruwe_bijlage))
-        ]
-        for p in mogelijke_paden:
-          if os.path.exists(p):
-            foto_pad = p
-            break
-
-      with st.container():
-        st.markdown(
-            f"""
-                <div class="tool-card">
-                    <span style="background-color: #ff4b4b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">Art: {art_val}</span>
-                    <h3 style="margin: 8px 0 0 0; color: #31333F;">{oms_val}</h3>
-                    <p style="margin: 5px 0 0 0; color: #6c757d; font-size: 13px;">
-                        <b>Groep:</b> {groep_val} | <b>Set:</b> {set_val} | <b>Stock:</b> {stock_val}
-                    </p>
-                </div>
-                """,
-            unsafe_allow_html=True,
-        )
-
-        c_img, c_info = st.columns([1, 2])
-        with c_img:
-          if foto_pad and os.path.exists(foto_pad):
-            st.image(foto_pad, use_container_width=True)
-          else:
-            st.markdown(f"*(Geen foto gevonden)*")
-
-        with c_info:
-          st.markdown(f"📍 **Ligging:** `{ligging_val}`")
-          if datum_val and str(datum_val).lower() != "nan":
-            st.markdown(f"📅 **Datum:** {datum_val}")
-          if opm_val and str(opm_val).lower() != "nan":
-            st.markdown(f"📝 **Opmerking:** {opm_val}")
-
-        st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
-
-  # --- ADMIN GEDEELTE (Alleen zichtbaar na inloggen) ---
-  if bewerk_rechten:
+  # --- SCHERM 1: ZOEKHEID & OVERZICHT (Standaard / via menu) ---
+  if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
+    st.markdown("Welkom! Zoek en filter hieronder in de inventaris.")
     st.markdown("---")
-    st.header("➕ Beheerderspaneel")
+    st.subheader("🔍 Zoeken & Filteren")
 
-    tab1, tab2, tab3 = st.tabs(
-        ["➕ Gereedschap toevoegen", "✏️ Gereedschap wijzigen", "🗑️ Gereedschap verwijderen"]
+    zoekterm = st.text_input(
+        "Vrij zoeken (artikelnummer, omschrijving, opmerking...)",
+        placeholder="Bijv. C511 of Accuboormachine...",
     )
 
-    bestaane_liggingen_lijst = sorted(df[col_ligging].dropna().astype(str).unique().tolist())
-    bestaane_liggingen_lijst = [l for l in bestaane_liggingen_lijst if l.strip() and l.lower() != "nan"]
-    opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaane_liggingen_lijst + ["➕ Nieuwe ligging opgeven..."]
+    with st.expander("🎯 Geavanceerde filters (Groep, Set, Ligging)"):
+      f_col1, f_col2, f_col3 = st.columns(3)
+      
+      unieke_groepen = ["Alle"] + sorted([str(x) for x in df[col_groep].dropna().unique() if str(x).strip() and str(x).lower() != "nan"])
+      unieke_sets = ["Alle"] + sorted([str(x) for x in df[col_set].dropna().unique() if str(x).strip() and str(x).lower() != "nan"])
+      unieke_liggingen = ["Alle"] + sorted([str(x) for x in df[col_ligging].dropna().unique() if str(x).strip() and str(x).lower() != "nan"])
 
-    # TAB 1: TOEVOEGEN
-    with tab1:
-      with st.form("gereedschap_form", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        with c1:
-          artikel_nummer = st.text_input("Artikel Nummer *")
-          stock = st.text_input("Stock", value="1")
-          groep = st.text_input("Groep")
-        with c2:
-          omschrijving = st.text_input("Omschrijving *")
-          set_val_input = st.text_input("Set")
+      with f_col1:
+        gekozen_groep = st.selectbox("Filter op Groep", unieke_groepen)
+      with f_col2:
+        gekozen_set = st.selectbox("Filter op Set", unieke_sets)
+      with f_col3:
+        gekozen_ligging = st.selectbox("Filter op Ligging", unieke_liggingen)
 
-        keuze_ligging = st.selectbox("Ligging selecteren *", opties_ligging, key="add_ligging")
-        extra_nieuwe_ligging = ""
+    df_gefilterd = df.copy()
+
+    if zoekterm:
+      mask = False
+      for c in df_gefilterd.columns:
+        mask = mask | df_gefilterd[c].astype(str).str.contains(zoekterm, case=False, na=False)
+      df_gefilterd = df_gefilterd[mask]
+
+    if gekozen_groep != "Alle":
+      df_gefilterd = df_gefilterd[df_gefilterd[col_groep].astype(str) == gekozen_groep]
+
+    if gekozen_set != "Alle":
+      df_gefilterd = df_gefilterd[df_gefilterd[col_set].astype(str) == gekozen_set]
+
+    if gekozen_ligging != "Alle":
+      df_gefilterd = df_gefilterd[df_gefilterd[col_ligging].astype(str) == gekozen_ligging]
+
+    st.markdown(f"**Aantal resultaten gevonden:** {len(df_gefilterd)}")
+    st.markdown("---")
+
+    if len(df_gefilterd) == 0:
+      st.info("Geen gereedschap gevonden dat aan je zoekopdracht/filters voldoet.")
+    else:
+      for i, row in df_gefilterd.iterrows():
+        art_val = row.get(col_artikel, "-")
+        oms_val = row.get(col_omschrijving, "-")
+        groep_val = row.get(col_groep, "-")
+        set_val = row.get(col_set, "-")
+        stock_val = row.get(col_stock, "-")
+        ligging_val = row.get(col_ligging, "-")
+        datum_val = row.get(col_datum, "")
+        opm_val = row.get(col_opmerkingen, "")
+        
+        ruwe_bijlage = str(row.get(col_bijlage, "")).strip()
+        foto_pad = ""
+        if ruwe_bijlage and ruwe_bijlage.lower() != "nan":
+          mogelijke_paden = [
+              ruwe_bijlage,
+              os.path.join("fotos", ruwe_bijlage),
+              os.path.join("fotos", os.path.basename(ruwe_bijlage))
+          ]
+          for p in mogelijke_paden:
+            if os.path.exists(p):
+              foto_pad = p
+              break
+
+        with st.container():
+          st.markdown(
+              f"""
+                  <div class="tool-card">
+                      <span style="background-color: #ff4b4b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">Art: {art_val}</span>
+                      <h3 style="margin: 8px 0 0 0; color: #31333F;">{oms_val}</h3>
+                      <p style="margin: 5px 0 0 0; color: #6c757d; font-size: 13px;">
+                          <b>Groep:</b> {groep_val} | <b>Set:</b> {set_val} | <b>Stock:</b> {stock_val}
+                      </p>
+                  </div>
+                  """,
+              unsafe_allow_html=True,
+          )
+
+          c_img, c_info = st.columns([1, 2])
+          with c_img:
+            if foto_pad and os.path.exists(foto_pad):
+              st.image(foto_pad, use_container_width=True)
+            else:
+              st.markdown(f"*(Geen foto gevonden)*")
+
+          with c_info:
+            st.markdown(f"📍 **Ligging:** `{ligging_val}`")
+            if datum_val and str(datum_val).lower() != "nan":
+              st.markdown(f"📅 **Datum:** {datum_val}")
+            if opm_val and str(opm_val).lower() != "nan":
+              st.markdown(f"📝 **Opmerking:** {opm_val}")
+
+          st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+
+  # --- SCHERM 2: GEREEDSCHAP TOEVOEGEN ---
+  elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
+    st.subheader("➕ Nieuw gereedschap toevoegen")
+    st.markdown("---")
+    
+    with st.form("gereedschap_form", clear_on_submit=True):
+      c1, c2 = st.columns(2)
+      with c1:
+        artikel_nummer = st.text_input("Artikel Nummer *")
+        stock = st.text_input("Stock", value="1")
+        groep = st.text_input("Groep")
+      with c2:
+        omschrijving = st.text_input("Omschrijving *")
+        set_val_input = st.text_input("Set")
+
+      keuze_ligging = st.selectbox("Ligging selecteren *", opties_ligging, key="add_ligging")
+      extra_nieuwe_ligging = ""
+      if keuze_ligging == "➕ Nieuwe ligging opgeven...":
+        extra_nieuwe_ligging = st.text_input("Geef de nieuwe ligging op *", key="add_new_lig")
+
+      opmerkingen = st.text_area("Opmerkingen")
+      foto = st.file_uploader(
+          "Bijlage (Foto)", type=["jpg", "png", "jpeg"], key="add_foto"
+      )
+
+      submit_button = st.form_submit_button(label="💾 Opslaan in inventaris")
+
+      if submit_button:
         if keuze_ligging == "➕ Nieuwe ligging opgeven...":
-          extra_nieuwe_ligging = st.text_input("Geef de nieuwe ligging op *", key="add_new_lig")
+          ligging = extra_nieuwe_ligging
+        elif keuze_ligging == "-- Kies bestaande of typ hieronder --":
+          ligging = ""
+        else:
+          ligging = keuze_ligging
 
-        opmerkingen = st.text_area("Opmerkingen")
-        foto = st.file_uploader(
-            "Bijlage (Foto)", type=["jpg", "png", "jpeg"], key="add_foto"
-        )
+        if not artikel_nummer or not omschrijving or not ligging:
+          st.error("⚠️ Vul ten minste Artikel Nummer, Omschrijving en een geldige Ligging in!")
+        else:
+          foto_pad = ""
+          if foto is not None:
+            foto_pad = os.path.join("fotos", foto.name)
+            with open(foto_pad, "wb") as f:
+              f.write(foto.getbuffer())
 
-        submit_button = st.form_submit_button(label="💾 Opslaan in inventaris")
+          huidige_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
 
-        if submit_button:
-          if keuze_ligging == "➕ Nieuwe ligging opgeven...":
-            ligging = extra_nieuwe_ligging
-          elif keuze_ligging == "-- Kies bestaande of typ hieronder --":
-            ligging = ""
-          else:
-            ligging = keuze_ligging
-
-          if not artikel_nummer or not omschrijving or not ligging:
-            st.error("⚠️ Vul ten minste Artikel Nummer, Omschrijving en een geldige Ligging in!")
-          else:
-            foto_pad = ""
-            if foto is not None:
-              foto_pad = os.path.join("fotos", foto.name)
-              with open(foto_pad, "wb") as f:
-                f.write(foto.getbuffer())
-
-            huidige_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
-
-            nieuwe_rij = {
-                col_artikel: artikel_nummer,
-                col_omschrijving: omschrijving,
-                col_stock: stock,
-                col_ligging: ligging,
-                col_datum: huidige_datum,
-                col_groep: groep,
-                col_set: set_val_input,
-                col_bijlage: foto.name if foto else "",
-                col_opmerkingen: opmerkingen,
-            }
-            df = pd.concat([df, pd.DataFrame([nieuwe_rij])], ignore_index=True)
-
-            df.to_csv(bestand_naam, index=False)
-            st.success(
-                f"✨ Artikel '{artikel_nummer} - {omschrijving}' is toegevoegd op {huidige_datum}!"
-                " Download hieronder het bestand en zet het in GitHub."
-            )
-
-    # TAB 2: WIJZIGEN
-    with tab2:
-      st.subheader("Bestaand gereedschap aanpassen")
-      if len(df) > 0:
-        bewerk_items_lijst = [
-            f"Art: {row.get(col_artikel, '')} - {row.get(col_omschrijving, '')} (Ligging: {row.get(col_ligging, '')}) - Rijnr: {i}"
-            for i, row in df.iterrows()
-        ]
-        gekozen_item_str = st.selectbox(
-            "Selecteer het gereedschap om te wijzigen", bewerk_items_lijst
-        )
-        rij_index = int(gekozen_item_str.split(" - Rijnr: ")[1])
-        huidige_rij = df.loc[rij_index]
-
-        with st.form("bewerk_form"):
-          bc1, bc2 = st.columns(2)
-          with bc1:
-            b_artikel = st.text_input("Artikel Nummer *", value=str(huidige_rij.get(col_artikel, "")))
-            b_stock = st.text_input("Stock", value=str(huidige_rij.get(col_stock, "")))
-            b_groep = st.text_input("Groep", value=str(huidige_rij.get(col_groep, "")))
-          with bc2:
-            b_omschrijving = st.text_input("Omschrijving *", value=str(huidige_rij.get(col_omschrijving, "")))
-            b_set = st.text_input("Set", value=str(huidige_rij.get(col_set, "")))
-
-          huidige_ligging_val = str(huidige_rij.get(col_ligging, ""))
-          b_ligging_keuze = st.selectbox(
-              "Ligging selecteren *", 
-              opties_ligging, 
-              index=opties_ligging.index(huidige_ligging_val) if huidige_ligging_val in opties_ligging else 0,
-              key="edit_ligging"
-          )
-          b_extra_ligging = ""
-          if b_ligging_keuze == "➕ Nieuwe ligging opgeven...":
-            b_extra_ligging = st.text_input("Geef de nieuwe ligging op *", key="edit_new_lig")
-
-          b_opmerkingen = st.text_area("Opmerkingen", value=str(huidige_rij.get(col_opmerkingen, "")))
-          b_bijlage = st.text_input("Huidige Bijlage / Foto", value=str(huidige_rij.get(col_bijlage, "")))
-          
-          b_nieuwe_foto = st.file_uploader(
-              "Nieuwe Bijlage (Foto uploaden ter vervanging)", type=["jpg", "png", "jpeg"], key="edit_foto"
-          )
-
-          bewerk_submit = st.form_submit_button(label="💾 Wijzigingen opslaan")
-
-          if bewerk_submit:
-            if b_ligging_keuze == "➕ Nieuwe ligging opgeven...":
-              b_ligging = b_extra_ligging
-            elif b_ligging_keuze == "-- Kies bestaande of typ hieronder --":
-              b_ligging = ""
-            else:
-              b_ligging = b_ligging_keuze
-
-            if not b_artikel or not b_omschrijving or not b_ligging:
-              st.error("⚠️ Artikel Nummer, Omschrijving en Ligging mogen niet leeg zijn!")
-            else:
-              final_bijlage = b_bijlage
-              if b_nieuwe_foto is not None:
-                foto_pad = os.path.join("fotos", b_nieuwe_foto.name)
-                with open(foto_pad, "wb") as f:
-                  f.write(b_nieuwe_foto.getbuffer())
-                final_bijlage = b_nieuwe_foto.name
-
-              wijzig_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
-
-              df.loc[rij_index, col_artikel] = b_artikel
-              df.loc[rij_index, col_omschrijving] = b_omschrijving
-              df.loc[rij_index, col_stock] = b_stock
-              df.loc[rij_index, col_ligging] = b_ligging
-              df.loc[rij_index, col_datum] = wijzig_datum
-              df.loc[rij_index, col_groep] = b_groep
-              df.loc[rij_index, col_set] = b_set
-              df.loc[rij_index, col_bijlage] = final_bijlage
-              df.loc[rij_index, col_opmerkingen] = b_opmerkingen
-
-              df.to_csv(bestand_naam, index=False)
-              st.success(f"✅ Wijzigingen opgeslagen! Nieuwe wijzigingsdatum: {wijzig_datum}. Download hieronder de nieuwe versie.")
-      else:
-        st.info("De lijst is leeg, er valt niets te wijzigen.")
-
-    # TAB 3: VERWIJDEREN
-    with tab3:
-      st.subheader("Verwijder een item uit de lijst")
-      if len(df) > 0:
-        items_lijst = [
-            f"Art: {row.get(col_artikel, '')} - {row.get(col_omschrijving, '')} (Ligging: {row.get(col_ligging, '')}) - Rijnr: {i}"
-            for i, row in df.iterrows()
-        ]
-        te_verwijderen_item = st.selectbox(
-            "Selecteer het gereedschap om te wissen", items_lijst, key="del_sel"
-        )
-
-        if st.button(
-            "❌ Verwijder geselecteerd gereedschap", type="primary"
-        ):
-          rij_index = int(te_verwijderen_item.split(" - Rijnr: ")[1])
-          verwijderde_omschrijving = df.loc[rij_index, col_omschrijving]
-          df = df.drop(rij_index).reset_index(drop=True)
+          nieuwe_rij = {
+              col_artikel: artikel_nummer,
+              col_omschrijving: omschrijving,
+              col_stock: stock,
+              col_ligging: ligging,
+              col_datum: huidige_datum,
+              col_groep: groep,
+              col_set: set_val_input,
+              col_bijlage: foto.name if foto else "",
+              col_opmerkingen: opmerkingen,
+          }
+          df = pd.concat([df, pd.DataFrame([nieuwe_rij])], ignore_index=True)
 
           df.to_csv(bestand_naam, index=False)
           st.success(
-              f"🗑️ '{verwijderde_omschrijving}' is verwijderd! Download het"
-              " bijgewerkte bestand hieronder om het vast te leggen op GitHub."
+              f"✨ Artikel '{artikel_nummer} - {omschrijving}' is toegevoegd op {huidige_datum}!"
           )
-          st.rerun()
-      else:
-        st.info("De lijst is momenteel leeg.")
 
-    # --- DOWNLOAD KNOP VOOR ADMIN ---
+  # --- SCHERM 3: GEREEDSCHAP WIJZIGEN ---
+  elif bewerk_rechten and beheer_actie == "✏️ Gereedschap wijzigen":
+    st.subheader("✏️ Bestaand gereedschap aanpassen")
     st.markdown("---")
+    
+    if len(df) > 0:
+      bewerk_items_lijst = [
+          f"Art: {row.get(col_artikel, '')} - {row.get(col_omschrijving, '')} (Ligging: {row.get(col_ligging, '')}) - Rijnr: {i}"
+          for i, row in df.iterrows()
+      ]
+      gekozen_item_str = st.selectbox(
+          "Selecteer het gereedschap om te wijzigen", bewerk_items_lijst
+      )
+      rij_index = int(gekozen_item_str.split(" - Rijnr: ")[1])
+      huidige_rij = df.loc[rij_index]
+
+      with st.form("bewerk_form"):
+        bc1, bc2 = st.columns(2)
+        with bc1:
+          b_artikel = st.text_input("Artikel Nummer *", value=str(huidige_rij.get(col_artikel, "")))
+          b_stock = st.text_input("Stock", value=str(huidige_rij.get(col_stock, "")))
+          b_groep = st.text_input("Groep", value=str(huidige_rij.get(col_groep, "")))
+        with bc2:
+          b_omschrijving = st.text_input("Omschrijving *", value=str(huidige_rij.get(col_omschrijving, "")))
+          b_set = st.text_input("Set", value=str(huidige_rij.get(col_set, "")))
+
+        huidige_ligging_val = str(huidige_rij.get(col_ligging, ""))
+        b_ligging_keuze = st.selectbox(
+            "Ligging selecteren *", 
+            opties_ligging, 
+            index=opties_ligging.index(huidige_ligging_val) if huidige_ligging_val in opties_ligging else 0,
+            key="edit_ligging"
+        )
+        b_extra_ligging = ""
+        if b_ligging_keuze == "➕ Nieuwe ligging opgeven...":
+          b_extra_ligging = st.text_input("Geef de nieuwe ligging op *", key="edit_new_lig")
+
+        b_opmerkingen = st.text_area("Opmerkingen", value=str(huidige_rij.get(col_opmerkingen, "")))
+        b_bijlage = st.text_input("Huidige Bijlage / Foto", value=str(huidige_rij.get(col_bijlage, "")))
+        
+        b_nieuwe_foto = st.file_uploader(
+            "Nieuwe Bijlage (Foto uploaden ter vervanging)", type=["jpg", "png", "jpeg"], key="edit_foto"
+        )
+
+        bewerk_submit = st.form_submit_button(label="💾 Wijzigingen opslaan")
+
+        if bewerk_submit:
+          if b_ligging_keuze == "➕ Nieuwe ligging opgeven...":
+            b_ligging = b_extra_ligging
+          elif b_ligging_keuze == "-- Kies bestaande of typ hieronder --":
+            b_ligging = ""
+          else:
+            b_ligging = b_ligging_keuze
+
+          if not b_artikel or not b_omschrijving or not b_ligging:
+            st.error("⚠️ Artikel Nummer, Omschrijving en Ligging mogen niet leeg zijn!")
+          else:
+            final_bijlage = b_bijlage
+            if b_nieuwe_foto is not None:
+              foto_pad = os.path.join("fotos", b_nieuwe_foto.name)
+              with open(foto_pad, "wb") as f:
+                f.write(b_nieuwe_foto.getbuffer())
+              final_bijlage = b_nieuwe_foto.name
+
+            wijzig_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
+
+            df.loc[rij_index, col_artikel] = b_artikel
+            df.loc[rij_index, col_omschrijving] = b_omschrijving
+            df.loc[rij_index, col_stock] = b_stock
+            df.loc[rij_index, col_ligging] = b_ligging
+            df.loc[rij_index, col_datum] = wijzig_datum
+            df.loc[rij_index, col_groep] = b_groep
+            df.loc[rij_index, col_set] = b_set
+            df.loc[rij_index, col_bijlage] = final_bijlage
+            df.loc[rij_index, col_opmerkingen] = b_opmerkingen
+
+            df.to_csv(bestand_naam, index=False)
+            st.success(f"✅ Wijzigingen opgeslagen! Nieuwe wijzigingsdatum: {wijzig_datum}.")
+    else:
+      st.info("De lijst is leeg, er valt niets te wijzigen.")
+
+  # --- SCHERM 4: GEREEDSCHAP VERWIJDEREN ---
+  elif bewerk_rechten and beheer_actie == "🗑️ Gereedschap verwijderen":
+    st.subheader("🗑️ Verwijder een item uit de lijst")
+    st.markdown("---")
+    
+    if len(df) > 0:
+      items_lijst = [
+          f"Art: {row.get(col_artikel, '')} - {row.get(col_omschrijving, '')} (Ligging: {row.get(col_ligging, '')}) - Rijnr: {i}"
+          for i, row in df.iterrows()
+      ]
+      te_verwijderen_item = st.selectbox(
+          "Selecteer het gereedschap om te wissen", items_lijst, key="del_sel"
+      )
+
+      if st.button("❌ Verwijder geselecteerd gereedschap", type="primary"):
+        rij_index = int(te_verwijderen_item.split(" - Rijnr: ")[1])
+        verwijderde_omschrijving = df.loc[rij_index, col_omschrijving]
+        df = df.drop(rij_index).reset_index(drop=True)
+
+        df.to_csv(bestand_naam, index=False)
+        st.success(f"🗑️ '{verwijderde_omschrijving}' is succesvol verwijderd!")
+        st.rerun()
+    else:
+      st.info("De lijst is momenteel leeg.")
+
+  # --- SCHERM 5: BESTAND DOWNLOADEN (Voor GitHub) ---
+  elif bewerk_rechten and beheer_actie == "📥 Bestand downloaden":
     st.subheader("📥 Bestand bijwerken op GitHub")
     st.markdown(
-        "Nadat je hebt toegevoegd, gewijzigd of verwijderd, kun je hier de nieuwe versie"
-        " downloaden en slepen naar je GitHub repository ter vervanging van de"
-        " oude."
+        "Nadat je hebt toegevoegd, gewijzigd of verwijderd, kun je hieronder de"
+        " nieuwe versie downloaden en slepen naar je GitHub repository ter"
+        " vervanging van de oude."
     )
+    st.markdown("---")
 
     csv_data = df.to_csv(index=False).encode("utf-8")
     st.download_button(
@@ -402,12 +403,6 @@ if os.path.exists(bestand_naam):
         data=csv_data,
         file_name="gereedschap.csv",
         mime="text/csv",
-    )
-  else:
-    st.markdown("---")
-    st.info(
-        "🔒 *Wil je gereedschap toevoegen, wijzigen of verwijderen? Log dan in via de"
-        " zijbalk met het beheerderswachtwoord.*"
     )
 
 else:

@@ -472,9 +472,9 @@ elif bewerk_rechten and beheer_actie == "🗑️ Gereedschap verwijderen":
         verwijderd_art = str(df.loc[rij_index, col_artikel])
         verwijdeerde_omschrijving = str(df.loc[rij_index, col_omschrijving])
 
-        # Gebruik een formulier voor de verwijderbevestiging zodat het stabiel doorloopt
+        # Gebruik een formulier voor de verwijderbevestiging
         with st.form("verwijder_form"):
-            st.warning(je bent op het punt om het volgende item definitief te verwijderen:\n\n**Artikel:** {verwijderd_art} - **Omschrijving:** {verwijdeerde_omschrijving}")
+            st.warning(f"Je bent op het punt om het volgende item definitief te verwijderen:\n\n**Artikel:** {verwijderd_art} - **Omschrijving:** {verwijdeerde_omschrijving}")
             bevestig_verwijder = st.form_submit_button("❌ Ja, definitief verwijderen en opslaan naar GitHub", type="primary")
 
             if bevestig_verwijder:

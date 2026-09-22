@@ -28,7 +28,7 @@ if "ping_thread_gestart" not in st.session_state:
 
 
 # --- CONFIGURATIE & TOKEN BEHEER ---
-GITHUB_REPO = "christoffm88-dotcom/sp"  # <-- PAS DIT AAN (bijv. 'jan/gereedschap-app')
+GITHUB_REPO = "JOUW_GEBRUIKERSNAAM/JOUW_REPO_NAAM"  # <-- PAS DIT AAN (bijv. 'jan/gereedschap-app')
 BESTAND_NAAM = "gereedschap.csv"
 LOG_BESTAND_NAAM = "logboek.csv"
 
@@ -49,7 +49,7 @@ def sla_op_naar_github(df_to_save, commit_bericht):
     df_to_save.to_csv(BESTAND_NAAM, index=False)
     
     if not token:
-        return False, "⚠️ Geen GitHub Token gevonden. Voeg hem eenmalig toe via Streamlit Secrets of de zijbalk."
+        return False, "⚠️ Geen GitHub Token gevonden. Voeg hem toe via Streamlit Secrets."
     
     try:
         g = Github(token)
@@ -70,7 +70,6 @@ def voeg_toe_aan_logboek(actie_type, artikel_nr, omschrijving_tekst):
     token = get_github_token()
     huidige_tijd = datetime.now().strftime("%d-%m-%Y %H:%M")
     
-    # Haal bestaand logboek op of maak een nieuwe
     df_log = None
     try:
         url_log = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{LOG_BESTAND_NAAM}?t={time.time()}"
@@ -222,8 +221,7 @@ bestaane_liggingen_lijst = [l for l in bestaane_liggingen_lijst if l.strip() and
 opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaane_liggingen_lijst + ["➕ Nieuwe ligging opgeven..."]
 
 # --- SCHERM 1: ZOEKHEID & OVERZICHT ---
-# --- DOWNLOAD KNOP VOOR DE LIJST ---
-    if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
+if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
     st.markdown("Welkom! Zoek en filter hieronder in de inventaris.")
     st.markdown("---")
     st.subheader("🔍 Zoeken & Filteren")
@@ -299,12 +297,11 @@ opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaane_liggingen_
                     if datum_val and str(datum_val).lower() != "nan": st.markdown(f"📅 **Datum:** {datum_val}")
                     if opm_val and str(opm_val).lower() != "nan": st.markdown(f"📝 **Opmerking:** {opm_val}")
                 st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
-                st.markdown("---")
+
+    # --- DOWNLOAD KNOP ---
+    st.markdown("---")
     st.subheader("📥 Lijst exporteren")
-    
-    # Converteer de huidige dataframe naar CSV formaat
     csv_data = df_gefilterd.to_csv(index=False).encode('utf-8')
-    
     st.download_button(
         label="📥 Download huidige lijst als CSV",
         data=csv_data,
@@ -502,7 +499,6 @@ elif bewerk_rechten and beheer_actie == "📋 Logboek bekijken":
             df_log_weergave = pd.read_csv(LOG_BESTAND_NAAM, sep=None, engine="python")
             
     if df_log_weergave is not None and not df_log_weergave.empty:
-        # Omgekeerde volgorde zodat de meest recente actie bovenaan staat
         df_log_weergave = df_log_weergave.iloc[::-1].reset_index(drop=True)
         st.dataframe(df_log_weergave, use_container_width=True)
     else:

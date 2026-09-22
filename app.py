@@ -35,12 +35,45 @@ GITHUB_REPO = "https://github.com/christoffm88-dotcom/sp"  # <-- Pas dit aan naa
 BESTAND_NAAM = "gereedschap.csv"
 
 def sla_op_naar_github(df_to_save, commit_bericht):
-    """Slaat het CSV-bestand automatisch op in GitHub met een API-token."""
+    """Slaat het CSV-bestand automatisch op in GitHub met een API-token en haalt altijd de juiste SHA op."""
     token = st.session_state.get("github_token", "") or os.getenv("GITHUB_TOKEN", "")
     if not token:
-        # Als er geen token is, slaan we hem in ieder geval lokaal op
         df_to_save.to_csv(BESTAND_NAAM, index=False)
-        return False, "Geen GitHub Token ingevuld. Data is alleen lokaal opgeslagen. Vul je token in via de zijkant om automatisch naar GitHub te pushen."
+        return False, "Geen GitHub Token ingevuld. Data is alleen lokaal opgeslagen."
+    
+    try:
+        g = Github(token)
+        repo = g.get_repo(GITHUB_REPO)
+        csv_inhoud = df_to_save.to_csv(index=False)
+        
+        sha = None
+        try:
+            # Probeer altijd eerst de actuele SHA van het bestand op GitHub op te halen
+            file_item = repo.get_contents(BESTAND_NAAM)
+            sha = file_item.sha
+        except Exception:
+            pass # Als het bestand nog niet bestaat, is sha gewoon None
+            
+        if sha:
+            # Als het bestand al bestaat op GitHub, voer een update uit met de SHA
+            repo.update_file(
+                path=BESTAND_NAAM,
+                message=commit_bericht,
+                content=csv_inhoud,
+                sha=sha
+            )
+        else:
+            # Als het bestand nog helemaal niet bestaat, maak het nieuw aan
+            repo.create_file(
+                path=BESTAND_NAAM,
+                message=commit_bericht,
+                content=csv_inhoud
+            )
+            
+        return True, "Succesvol opgeslagen en gepusht naar GitHub!"
+    except Exception as e:
+        df_to_save.to_csv(BESTAND_NAAM, index=False)
+        return False, f"Fout bij verbinden met GitHub: {e}. Data is lokaal opgeslagen."vuld. Data is alleen lokaal opgeslagen. Vul je token in via de zijkant om automatisch naar GitHub te pushen."
     
     try:
         g = Github(token)

@@ -438,7 +438,7 @@ elif bewerk_rechten and beheer_actie == "✏️ Gereedschap wijzigen":
                     df.loc[rij_index, col_bijlage] = final_bijlage
                     df.loc[rij_index, col_opmerkingen] = b_opmerkingen
 
-                    succes, melding = sla_op_naار_github(df, f"Wijzig artikel {b_artikel}") if 'sla_op_naar_github' in globals() else sla_op_naar_github(df, f"Wijzig artikel {b_artikel}")
+                    succes, melding = sla_op_naar_github(df, f"Wijzig artikel {b_artikel}") if 'sla_op_naar_github' in globals() else sla_op_naar_github(df, f"Wijzig artikel {b_artikel}")
                     if succes:
                         st.success("✅ Wijzigingen opgeslagen en direct gepusht naar GitHub!")
                     else:

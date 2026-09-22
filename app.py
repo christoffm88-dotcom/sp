@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 from github import Github
+from io import StringIO
 
 # --- CONFIGURATIE ---
 GITHUB_REPO = "christoffm88-dotcom/sp"  # Jouw GitHub repository
@@ -11,31 +12,36 @@ st.set_page_config(page_title="Gereedschapsbeheer", layout="wide")
 
 # --- FUNCTIE VOOR GITHUB SYNCHRONISATIE ---
 def laad_data_van_github():
-    """Laadt het CSV-bestand direct vanuit GitHub, of lokaal als fallback."""
+    """Laadt het CSV-bestand direct vanuit GitHub, of lokaal, met foutafhandeling voor corrupte bestanden."""
     token = st.session_state.get("github_token", "") or os.getenv("GITHUB_TOKEN", "")
+    ruwe_data = None
+    
     try:
         if token:
             g = Github(token)
             repo = g.get_repo(GITHUB_REPO)
             file_content = repo.get_contents(BESTAND_NAAM)
-            decoded_content = file_content.decoded_content.decode("utf-8")
-            from io import StringIO
-            return pd.read_csv(StringIO(decoded_content))
-        else:
-            # Probeer lokaal te laden als er geen token is
-            if os.path.exists(BESTAND_NAAM):
-                return pd.read_csv(BESTAND_NAAM)
+            ruwe_data = file_content.decoded_content.decode("utf-8")
+        elif os.path.exists(BESTAND_NAAM):
+            with open(BESTAND_NAAM, "r", encoding="utf-8") as f:
+                ruwe_data = f.read()
     except Exception:
         pass
     
-    # Fallback: standaard DataFrame als er niets is
-    if os.path.exists(BESTAND_NAAM):
-        return pd.read_csv(BESTAND_NAAM)
-    else:
-        # Maak een leeg basisbestand aan als het helemaal niet bestaat
-        df_init = pd.DataFrame(columns=["ID", "Naam", "Categorie", "Aantal", "Locatie"])
-        df_init.to_csv(BESTAND_NAAM, index=False)
-        return df_init
+    # Probeer de CSV te parsen als we data hebben gevonden
+    if ruwe_data:
+        try:
+            df = pd.read_csv(StringIO(ruwe_data))
+            # Controleer of de benodigde kolommen erin staan
+            vereiste_kolommen = ["ID", "Naam", "Categorie", "Aantal", "Locatie"]
+            if all(col in df.columns for col in vereiste_kolommen):
+                return df
+        except Exception:
+            pass # Als het parsen mislukt, vallen we terug op de initiële lijst
+            
+    # Fallback: Maak een schone basis DataFrame aan als het bestand ontbreekt of stuk is
+    df_init = pd.DataFrame(columns=["ID", "Naam", "Categorie", "Aantal", "Locatie"])
+    return df_init
 
 def sla_op_naar_github(df_to_save, commit_bericht):
     """Slaat het CSV-bestand automatisch op in GitHub met een API-token en haalt altijd de juiste SHA op."""
@@ -51,14 +57,12 @@ def sla_op_naar_github(df_to_save, commit_bericht):
         
         sha = None
         try:
-            # Probeer altijd eerst de actuele SHA van het bestand op GitHub op te halen
             file_item = repo.get_contents(BESTAND_NAAM)
             sha = file_item.sha
         except Exception:
-            pass # Als het bestand nog niet bestaat, is sha gewoon None
+            pass
             
         if sha:
-            # Als het bestand al bestaat op GitHub, voer een update uit met de SHA
             repo.update_file(
                 path=BESTAND_NAAM,
                 message=commit_bericht,
@@ -66,7 +70,6 @@ def sla_op_naar_github(df_to_save, commit_bericht):
                 sha=sha
             )
         else:
-            # Als het bestand nog helemaal niet bestaat, maak het nieuw aan
             repo.create_file(
                 path=BESTAND_NAAM,
                 message=commit_bericht,
@@ -87,7 +90,7 @@ if "ingelogd" not in st.session_state:
 if not st.session_state["ingelogd"]:
     wachtwoord = st.sidebar.text_input("Beheerderswachtwoord", type="password")
     if st.sidebar.button("Inloggen"):
-        if wachtwoord == "Gereedschap123vanmossel":  # Pas dit aan naar wens
+        if wachtwoord == "admin123":
             st.session_state["ingelogd"] = True
             st.sidebar.success("Ingelogd als beheerder!")
             st.rerun()
@@ -96,7 +99,6 @@ if not st.session_state["ingelogd"]:
 else:
     st.sidebar.success("Je bent ingelogd als beheerder.")
     
-    # Veld voor GitHub Token
     huidige_token = st.session_state.get("github_token", "")
     ingevoerde_token = st.sidebar.text_input("GitHub Personal Access Token", value=huidige_token, type="password")
     if ingevoerde_token:
@@ -136,7 +138,7 @@ if st.session_state["ingelogd"]:
             if submit_nieuw:
                 if nieuwe_naam:
                     nieuw_id = int(df["ID"].max() + 1) if not df.empty and "ID" in df.columns and pd.notna(df["ID"].max()) else 1
-                    nieuw_item = pd.DataFrame([{"ID": nieuw_id, "Naam": nieuwe_naam, "Categorie": nieuwe_cat, "Aantal": nieuw_aantal, "Locatie": nieuwe_loc}])
+                    nieuw_item = pd.DataFrame([{"ID": nieuw_id, "Naam": nieuwe_naam, "Categorie": neue_cat if 'neue_cat' in locals() else nieuwe_cat, "Aantal": nieuw_aantal, "Locatie": nieuwe_loc}])
                     df = pd.concat([df, nieuw_item], ignore_index=True)
                     
                     succes, melding = sla_op_naar_github(df, f"Nieuw item toegevoegd: {nieuwe_naam}")
@@ -149,7 +151,7 @@ if st.session_state["ingelogd"]:
                     st.error("Vul ten minste de naam van het gereedschap in.")
 
     with tab2:
-        if not df.empty:
+        if not df.empty and "Naam" in df.columns:
             geselecteerd_item = st.selectbox("Kies gereedschap om te bewerken of verwijderen", df["Naam"].tolist())
             item_rij = df[df["Naam"] == geselecteerd_item].iloc[0]
             

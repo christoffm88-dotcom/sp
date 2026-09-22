@@ -9,7 +9,7 @@ st.set_page_config(
     page_title="Gereedschap Beheer", page_icon="🛠️", layout="wide"
 )
 
-# Custom CSS voor een strakke mobiele weergave
+# Custom CSS voor een strakke weergave
 st.markdown(
     """
     <style>
@@ -44,7 +44,7 @@ st.sidebar.markdown("---")
 admin_mode = st.sidebar.checkbox("Inloggen als Beheerder")
 
 bewerk_rechten = False
-beheer_actie = "Zoeken & Overzicht"
+beheer_actie = "🔍 Zoeken & Overzicht"
 
 if admin_mode:
   wachtwoord = st.sidebar.text_input("Voer wachtwoord in", type="password")
@@ -61,7 +61,7 @@ if admin_mode:
             "➕ Gereedschap toevoegen",
             "✏️ Gereedschap wijzigen",
             "🗑️ Gereedschap verwijderen",
-            "📥 Bestand downloaden",
+            "📥 Bestand downloaden v. GitHub",
         ],
     )
   else:
@@ -116,7 +116,7 @@ if os.path.exists(bestand_naam):
   bestaane_liggingen_lijst = [l for l in bestaane_liggingen_lijst if l.strip() and l.lower() != "nan"]
   opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaane_liggingen_lijst + ["➕ Nieuwe ligging opgeven..."]
 
-  # --- SCHERM 1: ZOEKHEID & OVERZICHT (Standaard / via menu) ---
+  # --- SCHERM 1: ZOEKHEID & OVERZICHT ---
   if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
     st.markdown("Welkom! Zoek en filter hieronder in de inventaris.")
     st.markdown("---")
@@ -278,7 +278,8 @@ if os.path.exists(bestand_naam):
 
           df.to_csv(bestand_naam, index=False)
           st.success(
-              f"✨ Artikel '{artikel_nummer} - {omschrijving}' is toegevoegd op {huidige_datum}!"
+              f"✨ Artikel '{artikel_nummer} - {omschrijving}' is toegevoegd op {huidige_datum}! "
+              "Vergeet niet om straks via de zijbalk het bestand te downloaden voor GitHub."
           )
 
   # --- SCHERM 3: GEREEDSCHAP WIJZIGEN ---
@@ -358,7 +359,7 @@ if os.path.exists(bestand_naam):
             df.loc[rij_index, col_opmerkingen] = b_opmerkingen
 
             df.to_csv(bestand_naam, index=False)
-            st.success(f"✅ Wijzigingen opgeslagen! Nieuwe wijzigingsdatum: {wijzig_datum}.")
+            st.success(f"✅ Wijzigingen opgeslagen! Nieuwe wijzigingsdatum: {wijzig_datum}. Download hieronder de nieuwe versie.")
     else:
       st.info("De lijst is leeg, er valt niets te wijzigen.")
 
@@ -388,18 +389,18 @@ if os.path.exists(bestand_naam):
       st.info("De lijst is momenteel leeg.")
 
   # --- SCHERM 5: BESTAND DOWNLOADEN (Voor GitHub) ---
-  elif bewerk_rechten and beheer_actie == "📥 Bestand downloaden":
+  elif bewerk_rechten and beheer_actie == "📥 Bestand downloaden v. GitHub":
     st.subheader("📥 Bestand bijwerken op GitHub")
     st.markdown(
         "Nadat je hebt toegevoegd, gewijzigd of verwijderd, kun je hieronder de"
-        " nieuwe versie downloaden en slepen naar je GitHub repository ter"
+        " nieuwe versie downloaden en in je GitHub repository zetten ter"
         " vervanging van de oude."
     )
     st.markdown("---")
 
     csv_data = df.to_csv(index=False).encode("utf-8")
     st.download_button(
-        label="📥 Download bijgewerkte gereedschap.csv",
+        label="📥 Download gereedschap.csv",
         data=csv_data,
         file_name="gereedschap.csv",
         mime="text/csv",

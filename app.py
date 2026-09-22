@@ -467,20 +467,25 @@ elif bewerk_rechten and beheer_actie == "🗑️ Gereedschap verwijderen":
             for i, row in df.iterrows()
         ]
         te_verwijderen_item = st.selectbox("Selecteer het gereedschap om te wissen", items_lijst, key="del_sel")
+        
+        rij_index = int(te_verwijderen_item.split(" - Rijnr: ")[1])
+        verwijderd_art = str(df.loc[rij_index, col_artikel])
+        verwijdeerde_omschrijving = str(df.loc[rij_index, col_omschrijving])
 
-        if st.button("❌ Verwijder geselecteerd gereedschap", type="primary"):
-            rij_index = int(te_verwijderen_item.split(" - Rijnr: ")[1])
-            verwijderd_art = df.loc[rij_index, col_artikel]
-            verwijderde_omschrijving = df.loc[rij_index, col_omschrijving]
-            df = df.drop(rij_index).reset_index(drop=True)
+        # Gebruik een formulier voor de verwijderbevestiging zodat het stabiel doorloopt
+        with st.form("verwijder_form"):
+            st.warning(je bent op het punt om het volgende item definitief te verwijderen:\n\n**Artikel:** {verwijderd_art} - **Omschrijving:** {verwijdeerde_omschrijving}")
+            bevestig_verwijder = st.form_submit_button("❌ Ja, definitief verwijderen en opslaan naar GitHub", type="primary")
 
-            succes, melding = sla_op_naar_github(df, f"Verwijder item {verwijderde_omschrijving}")
-            if succes:
-                voeg_toe_aan_logboek("Verwijderd", verwijderd_art, verwijderde_omschrijving)
-                st.success(f"🗑️ '{verwijderde_omschrijving}' is verwijderd en verwerkt op GitHub!")
-            else:
-                st.warning(melding)
-            st.rerun()
+            if bevestig_verwijder:
+                df = df.drop(rij_index).reset_index(drop=True)
+
+                succes, melding = sla_op_naar_github(df, f"Verwijder item {verwijdeerde_omschrijving}")
+                if succes:
+                    voeg_toe_aan_logboek("Verwijderd", verwijderd_art, verwijdeerde_omschrijving)
+                    st.success(f"🗑️ '{verwijdeerde_omschrijving}' is succesvol verwijderd en opgeslagen op GitHub!")
+                else:
+                    st.warning(melding)
     else:
         st.info("De lijst is momenteel leeg.")
 

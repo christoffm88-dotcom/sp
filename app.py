@@ -1,8 +1,9 @@
 from datetime import datetime
+from io import BytesIO
 import os
 import threading
 import time
-import requests
+from PIL import Image
 import pandas as pd
 import streamlit as st
 from github import Github, GithubException
@@ -43,6 +44,24 @@ def get_github_token():
         pass
     return os.getenv("GITHUB_TOKEN", "")
 
+def optimaliseer_foto(uploaded_file, max_breedte=1000):
+    """Verkleint en comprimeert een geüploade foto automatisch voor opslag."""
+    try:
+        img = Image.open(uploaded_file)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+            
+        breedte, hoogte = img.size
+        if breedte > max_breedte:
+            nieuwe_hoogte = int(hoogte * (max_breedte / breedte))
+            img = img.resize((max_breedte, nieuwe_hoogte), Image.Resampling.LANCZOS)
+            
+        buffer = BytesIO()
+        img.save(buffer, format="JPEG", quality=80)
+        return buffer.getvalue()
+    except Exception:
+        return uploaded_file.getvalue()
+
 def sla_op_naar_github(df_to_save, commit_bericht):
     """Slaat het CSV-bestand direct op in GitHub."""
     token = get_github_token()
@@ -64,6 +83,26 @@ def sla_op_naar_github(df_to_save, commit_bericht):
         return True, "✅ Succesvol opgeslagen en veilig vastgelegd in GitHub!"
     except Exception as e:
         return False, f"❌ Fout bij verbinden met GitHub: {e}."
+
+def sla_foto_op_naar_github(bestands_inhoud, bestands_naam, commit_bericht):
+    """Uploadt een geoptimaliseerde foto direct naar de 'fotos/' map in GitHub."""
+    token = get_github_token()
+    if not token:
+        return False, "Geen GitHub token gevonden."
+    
+    try:
+        g = Github(token)
+        repo = g.get_repo(GITHUB_REPO)
+        pad_in_repo = f"fotos/{bestands_naam}"
+        
+        try:
+            file_item = repo.get_contents(pad_in_repo)
+            repo.update_file(path=pad_in_repo, message=commit_bericht, content=bestands_inhoud, sha=file_item.sha)
+        except Exception:
+            repo.create_file(path=pad_in_repo, message=commit_bericht, content=bestands_inhoud)
+        return True, "Foto succesvol naar GitHub geüpload!"
+    except Exception as e:
+        return False, str(e)
 
 def voeg_toe_aan_logboek(actie_type, artikel_nr, omschrijving_tekst):
     """Voegt een regel toe aan het logboek en slaat dit op naar GitHub."""
@@ -348,11 +387,19 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
             elif artikel_nummer in df[col_artikel].astype(str).values:
                 st.error(f"❌ Dit artikelnummer ('{artikel_nummer}') bestaat al in de lijst! Dubbele records zijn niet toegestaan.")
             else:
-                foto_pad = ""
+                foto_naam = ""
                 if foto is not None:
-                    foto_pad = os.path.join("fotos", foto.name)
+                    foto_naam = os.path.splitext(foto.name)[0] + ".jpg"
+                    geoptimaliseerde_bytes = optimaliseer_foto(foto)
+                    
+                    # Lokaal opslaan
+                    os.makedirs("fotos", exist_ok=True)
+                    foto_pad = os.path.join("fotos", foto_naam)
                     with open(foto_pad, "wb") as f:
-                        f.write(foto.getbuffer())
+                        f.write(geoptimaliseerde_bytes)
+                        
+                    # Naar GitHub pushen
+                    sla_foto_op_naar_github(geoptimaliseerde_bytes, foto_naam, f"Voeg gecomprimeerde foto toe voor artikel {artikel_nummer}")
 
                 huidige_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
                 nieuwe_rij = {
@@ -363,7 +410,7 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
                     col_datum: huidige_datum,
                     col_groep: groep,
                     col_set: set_val_input,
-                    col_bijlage: foto.name if foto else "",
+                    col_bijlage: foto_naam,
                     col_opmerkingen: opmerkingen,
                 }
                 df = pd.concat([df, pd.DataFrame([nieuwe_rij])], ignore_index=True)
@@ -431,10 +478,18 @@ elif bewerk_rechten and beheer_actie == "✏️ Gereedschap wijzigen":
                 else:
                     final_bijlage = b_bijlage
                     if b_nieuwe_foto is not None:
-                        foto_pad = os.path.join("fotos", b_nieuwe_foto.name)
+                        foto_naam = os.path.splitext(b_nieuwe_foto.name)[0] + ".jpg"
+                        geoptimaliseerde_bytes = optimaliseer_foto(b_nieuwe_foto)
+                        
+                        # Lokaal opslaan
+                        os.makedirs("fotos", exist_ok=True)
+                        foto_pad = os.path.join("fotos", foto_naam)
                         with open(foto_pad, "wb") as f:
-                            f.write(b_nieuwe_foto.getbuffer())
-                        final_bijlage = b_nieuwe_foto.name
+                            f.write(geoptimaliseerde_bytes)
+                            
+                        # Naar GitHub pushen
+                        sla_foto_op_naar_github(geoptimaliseerde_bytes, foto_naam, f"Update gecomprimeerde foto voor artikel {b_artikel}")
+                        final_bijlage = foto_naam
 
                     wijzig_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
                     df.loc[rij_index, col_artikel] = b_artikel
@@ -472,7 +527,6 @@ elif bewerk_rechten and beheer_actie == "🗑️ Gereedschap verwijderen":
         verwijderd_art = str(df.loc[rij_index, col_artikel])
         verwijdeerde_omschrijving = str(df.loc[rij_index, col_omschrijving])
 
-        # Gebruik een formulier voor de verwijderbevestiging
         with st.form("verwijder_form"):
             st.warning(f"Je bent op het punt om het volgende item definitief te verwijderen:\n\n**Artikel:** {verwijderd_art} - **Omschrijving:** {verwijdeerde_omschrijving}")
             bevestig_verwijder = st.form_submit_button("❌ Ja, definitief verwijderen en opslaan naar GitHub", type="primary")

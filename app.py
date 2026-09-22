@@ -28,7 +28,7 @@ if "ping_thread_gestart" not in st.session_state:
 
 
 # --- CONFIGURATIE & TOKEN BEHEER ---
-GITHUB_REPO = "JOUW_GEBRUIKERSNAAM/JOUW_REPO_NAAM"  # <-- PAS DIT AAN (bijv. 'jan/gereedschap-app')
+GITHUB_REPO = "christoffm88-dotcom/sp"  # <-- PAS DIT AAN (bijv. 'jan/gereedschap-app')
 BESTAND_NAAM = "gereedschap.csv"
 LOG_BESTAND_NAAM = "logboek.csv"
 

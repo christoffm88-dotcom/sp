@@ -1,8 +1,74 @@
 from datetime import datetime
 import os
-from io import BytesIO
+import threading
+import time
+import requests
 import pandas as pd
 import streamlit as st
+from github import Github, GithubException
+
+# --- ANTI-SLAAPSTAND ACHTERGROND SCRIPT ---
+def hou_app_wakker():
+    """Stuurt periodiek een verzoek naar de eigen app om te zorgen dat deze wakker blijft."""
+    # Haal de app URL op als deze bekend is, of gebruik een standaard mechanisme
+    app_url = os.getenv("STREAMLIT_APP_URL", "")
+    if not app_url:
+        return
+    
+    while True:
+        try:
+            requests.get(app_url, timeout=10)
+        except Exception:
+            pass
+        # Elke 10 minuten (600 seconden) een signaal sturen
+        time.sleep(600)
+
+# Start de achtergrond-thread eenmalig als deze nog niet draait
+if "ping_thread_gestart" not in st.session_state:
+    st.session_state["ping_thread_gestart"] = True
+    t = threading.Thread(target=hou_app_wakker, daemon=True)
+    t.start()
+
+
+# --- CONFIGURATIE & HULPFUNCTIES VOOR GITHUB ---
+GITHUB_REPO = "JOUW_GEBRUIKERSNAAM/JOUW_REPO_NAAM"  # <-- Pas dit aan naar jouw GitHub repository (bijv. 'jan/gereedschap-app')
+BESTAND_NAAM = "gereedschap.csv"
+
+def sla_op_naar_github(df_to_save, commit_bericht):
+    """Slaat het CSV-bestand automatisch op in GitHub met een API-token."""
+    token = st.session_state.get("github_token", "") or os.getenv("GITHUB_TOKEN", "")
+    if not token:
+        # Als er geen token is, slaan we hem in ieder geval lokaal op
+        df_to_save.to_csv(BESTAND_NAAM, index=False)
+        return False, "Geen GitHub Token ingevuld. Data is alleen lokaal opgeslagen. Vul je token in via de zijkant om automatisch naar GitHub te pushen."
+    
+    try:
+        g = Github(token)
+        repo = g.get_repo(GITHUB_REPO)
+        csv_inhoud = df_to_save.to_csv(index=False)
+        
+        try:
+            # Probeer het bestaande bestand op te halen om de SHA te krijgen (nodig voor update)
+            file_item = repo.get_contents(BESTAND_NAAM)
+            repo.update_file(
+                path=BESTAND_NAAM,
+                message=commit_bericht,
+                content=csv_inhoud,
+                sha=file_item.sha
+            )
+        except Exception:
+            # Als het bestand nog niet bestaat, maak het aan
+            repo.create_file(
+                path=BESTAND_NAAM,
+                message=commit_bericht,
+                content=csv_inhoud
+            )
+        return True, "Succesvol opgeslagen en gepusht naar GitHub!"
+    except Exception as e:
+        # Fallback naar lokaal opslaan
+        df_to_save.to_csv(BESTAND_NAAM, index=False)
+        return False, f"Fout bij verbinden met GitHub: {e}. Data is lokaal opgeslagen."
+
 
 # Pagina instellingen
 st.set_page_config(
@@ -53,6 +119,14 @@ if admin_mode:
     st.sidebar.success("✅ Ingelogd als beheerder")
     
     st.sidebar.markdown("---")
+    st.sidebar.markdown("### ⚙️ GitHub Instellingen")
+    # Veld om de GitHub Token op te slaan in de sessie
+    gh_token_input = st.sidebar.text_input("GitHub Personal Access Token", type="password", value=st.session_state.get("github_token", ""))
+    if gh_token_input:
+        st.session_state["github_token"] = gh_token_input
+        st.sidebar.success("Token opgeslagen voor deze sessie!")
+
+    st.sidebar.markdown("---")
     st.sidebar.markdown("### ⚡ Snelkoppelingen")
     beheer_actie = st.sidebar.radio(
         "Kies een actie:",
@@ -61,7 +135,6 @@ if admin_mode:
             "➕ Gereedschap toevoegen",
             "✏️ Gereedschap wijzigen",
             "🗑️ Gereedschap verwijderen",
-            "📥 Bestand downloaden v. GitHub",
         ],
     )
   else:
@@ -75,9 +148,6 @@ st.sidebar.info(
 # --- HOOFDSCHERM ---
 st.title("🛠️ Gereedschap & Locatie Beheer")
 
-# Automatisch het bestand inlezen
-bestand_naam = "gereedschap.csv"
-
 kolommen_lijst = [
     "Artikel Nummer",
     "Omschrijving",
@@ -90,9 +160,19 @@ kolommen_lijst = [
     "Opmerkingen",
 ]
 
-if os.path.exists(bestand_naam):
+# Probeer het bestand in te lezen (lokaal of direct proberen te downloaden van GitHub als het lokaal mist)
+if not os.path.exists(BESTAND_NAAM):
   try:
-    df = pd.read_csv(bestand_naam, sep=None, engine="python")
+    # Probeer te downloaden vanuit de publieke github link als fallback
+    url_raw = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{BESTAND_NAAM}"
+    df = pd.read_csv(url_raw, sep=None, engine="python")
+    df.to_csv(BESTAND_NAAM, index=False)
+  except Exception:
+    df = pd.DataFrame(columns=kolommen_lijst)
+
+if os.path.exists(BESTAND_NAAM):
+  try:
+    df = pd.read_csv(BESTAND_NAAM, sep=None, engine="python")
     df.columns = df.columns.str.strip()
   except Exception as e:
     df = pd.DataFrame(columns=kolommen_lijst)
@@ -242,7 +322,7 @@ if os.path.exists(bestand_naam):
           "Bijlage (Foto)", type=["jpg", "png", "jpeg"], key="add_foto"
       )
 
-      submit_button = st.form_submit_button(label="💾 Opslaan in inventaris")
+      submit_button = st.form_submit_button(label="💾 Opslaan en direct naar GitHub")
 
       if submit_button:
         if keuze_ligging == "➕ Nieuwe ligging opgeven...":
@@ -276,11 +356,12 @@ if os.path.exists(bestand_naam):
           }
           df = pd.concat([df, pd.DataFrame([nieuwe_rij])], ignore_index=True)
 
-          df.to_csv(bestand_naam, index=False)
-          st.success(
-              f"✨ Artikel '{artikel_nummer} - {omschrijving}' is toegevoegd op {huidige_datum}! "
-              "Vergeet niet om straks via de zijbalk het bestand te downloaden voor GitHub."
-          )
+          # Opslaan en automatisch naar GitHub pushen
+          succes, melding = sla_op_naar_github(df, f"Voeg artikel {artikel_nummer} toe")
+          if succes:
+              st.success(f"✨ Artikel '{artikel_nummer} - {omschrijving}' is toegevoegd en automatisch opgeslagen op GitHub!")
+          else:
+              st.warning(melding)
 
   # --- SCHERM 3: GEREEDSCHAP WIJZIGEN ---
   elif bewerk_rechten and beheer_actie == "✏️ Gereedschap wijzigen":
@@ -326,7 +407,7 @@ if os.path.exists(bestand_naam):
             "Nieuwe Bijlage (Foto uploaden ter vervanging)", type=["jpg", "png", "jpeg"], key="edit_foto"
         )
 
-        bewerk_submit = st.form_submit_button(label="💾 Wijzigingen opslaan")
+        bewerk_submit = st.form_submit_button(label="💾 Wijzigingen opslaan naar GitHub")
 
         if bewerk_submit:
           if b_ligging_keuze == "➕ Nieuwe ligging opgeven...":
@@ -358,8 +439,11 @@ if os.path.exists(bestand_naam):
             df.loc[rij_index, col_bijlage] = final_bijlage
             df.loc[rij_index, col_opmerkingen] = b_opmerkingen
 
-            df.to_csv(bestand_naam, index=False)
-            st.success(f"✅ Wijzigingen opgeslagen! Nieuwe wijzigingsdatum: {wijzig_datum}. Download hieronder de nieuwe versie.")
+            succes, melding = sla_op_naar_github(df, f"Wijzig artikel {b_artikel}")
+            if succes:
+                st.success(f"✅ Wijzigingen opgeslagen en automatisch gepusht naar GitHub!")
+            else:
+                st.warning(melding)
     else:
       st.info("De lijst is leeg, er valt niets te wijzigen.")
 
@@ -382,32 +466,17 @@ if os.path.exists(bestand_naam):
         verwijderde_omschrijving = df.loc[rij_index, col_omschrijving]
         df = df.drop(rij_index).reset_index(drop=True)
 
-        df.to_csv(bestand_naam, index=False)
-        st.success(f"🗑️ '{verwijderde_omschrijving}' is succesvol verwijderd!")
+        succes, melding = sla_op_naar_github(df, f"Verwijder item {verwijderde_omschrijving}")
+        if succes:
+            st.success(f"🗑️ '{verwijderde_omschrijving}' is verwijderd en de wijziging is op GitHub verwerkt!")
+        else:
+            st.warning(melding)
         st.rerun()
     else:
       st.info("De lijst is momenteel leeg.")
 
-  # --- SCHERM 5: BESTAND DOWNLOADEN (Voor GitHub) ---
-  elif bewerk_rechten and beheer_actie == "📥 Bestand downloaden v. GitHub":
-    st.subheader("📥 Bestand bijwerken op GitHub")
-    st.markdown(
-        "Nadat je hebt toegevoegd, gewijzigd of verwijderd, kun je hieronder de"
-        " nieuwe versie downloaden en in je GitHub repository zetten ter"
-        " vervanging van de oude."
-    )
-    st.markdown("---")
-
-    csv_data = df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="📥 Download gereedschap.csv",
-        data=csv_data,
-        file_name="gereedschap.csv",
-        mime="text/csv",
-    )
-
 else:
   st.error(
-      "⚠️ Het bestand 'gereedschap.csv' is nog niet gevonden in de GitHub map."
-      " Zorg dat je jouw CSV-bestand uploadt naar je repository."
+      "⚠️ Het bestand 'gereedschap.csv' kon niet worden gevonden. "
+      "Zorg dat je repository gekoppeld is en dat de naam van de repository klopt in de code."
   )

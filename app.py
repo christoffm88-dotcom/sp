@@ -30,7 +30,7 @@ if "ping_thread_gestart" not in st.session_state:
 
 
 # --- CONFIGURATIE & HULPFUNCTIES VOOR GITHUB ---
-GITHUB_REPO = "https://github.com/christoffm88-dotcom/sp/tree/main"  # <-- PAS DIT AAN (bijv. 'jan/gereedschap-app')
+GITHUB_REPO = "https://github.com/christoffm88-dotcom/sp"  # <-- PAS DIT AAN (bijv. 'jan/gereedschap-app')
 BESTAND_NAAM = "gereedschap.csv"
 
 def sla_op_naar_github(df_to_save, commit_bericht):

@@ -223,20 +223,7 @@ opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaane_liggingen_
 
 # --- SCHERM 1: ZOEKHEID & OVERZICHT ---
 # --- DOWNLOAD KNOP VOOR DE LIJST ---
-    st.markdown("---")
-    st.subheader("📥 Lijst exporteren")
-    
-    # Converteer de huidige dataframe naar CSV formaat
-    csv_data = df_gefilterd.to_csv(index=False).encode('utf-8')
-    
-    st.download_button(
-        label="📥 Download huidige lijst als CSV",
-        data=csv_data,
-        file_name=f"gereedschap_export_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.csv",
-        mime="text/csv",
-        help="Download de getoonde lijst direct naar je computer."
-    )
-if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
+    if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
     st.markdown("Welkom! Zoek en filter hieronder in de inventaris.")
     st.markdown("---")
     st.subheader("🔍 Zoeken & Filteren")
@@ -312,6 +299,19 @@ if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
                     if datum_val and str(datum_val).lower() != "nan": st.markdown(f"📅 **Datum:** {datum_val}")
                     if opm_val and str(opm_val).lower() != "nan": st.markdown(f"📝 **Opmerking:** {opm_val}")
                 st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+                st.markdown("---")
+    st.subheader("📥 Lijst exporteren")
+    
+    # Converteer de huidige dataframe naar CSV formaat
+    csv_data = df_gefilterd.to_csv(index=False).encode('utf-8')
+    
+    st.download_button(
+        label="📥 Download huidige lijst als CSV",
+        data=csv_data,
+        file_name=f"gereedschap_export_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.csv",
+        mime="text/csv",
+        help="Download de getoonde lijst direct naar je computer."
+    )
 
 # --- SCHERM 2: GEREEDSCHAP TOEVOEGEN ---
 elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":

@@ -60,7 +60,8 @@ def optimaliseer_foto(uploaded_file, max_breedte=1000):
         img.save(buffer, format="JPEG", quality=80)
         return buffer.getvalue()
     except Exception:
-        return uploaded_file.getvalue()
+        uploaded_file.seek(0)
+        return uploaded_file.read()
 
 def sla_op_naar_github(df_to_save, commit_bericht):
     """Slaat het CSV-bestand direct op in GitHub."""
@@ -315,6 +316,9 @@ if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
                     if os.path.exists(p):
                         foto_pad = p
                         break
+                # Als lokaal niet gevonden maar wel op GitHub raw URL
+                if not foto_pad:
+                    foto_pad = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/fotos/{ruwe_bijlage}"
 
             with st.container():
                 st.markdown(
@@ -331,10 +335,13 @@ if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
                 )
                 c_img, c_info = st.columns([1, 2])
                 with c_img:
-                    if foto_pad and os.path.exists(foto_pad):
-                        st.image(foto_pad, use_container_width=True)
-                    else:
-                        st.markdown("*(Geen foto)*")
+                    try:
+                        if foto_pad:
+                            st.image(foto_pad, use_container_width=True)
+                        else:
+                            st.markdown("*(Geen foto)*")
+                    except Exception:
+                        st.markdown("*(Kan foto niet laden)*")
                 with c_info:
                     st.markdown(f"📍 **Ligging:** `{ligging_val}`")
                     if datum_val and str(datum_val).lower() != "nan": st.markdown(f"📅 **Datum:** {datum_val}")
@@ -358,7 +365,10 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
     st.subheader("➕ Nieuw gereedschap toevoegen")
     st.markdown("---")
     
-    with st.form("gereedschap_form", clear_on_submit=True):
+    # Foto uploader BUITEN het formulier geplaatst zodat de data stabiel blijft
+    foto = st.file_uploader("Bijlage (Foto)", type=["jpg", "png", "jpeg"], key="add_foto")
+
+    with st.form("gereedschap_form"):
         c1, c2 = st.columns(2)
         with c1:
             artikel_nummer = st.text_input("Artikel Nummer *")
@@ -374,7 +384,6 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
             extra_nieuwe_ligging = st.text_input("Geef de nieuwe ligging op *", key="add_new_lig")
 
         opmerkingen = st.text_area("Opmerkingen")
-        foto = st.file_uploader("Bijlage (Foto)", type=["jpg", "png", "jpeg"], key="add_foto")
 
         submit_button = st.form_submit_button(label="💾 Opslaan en direct naar GitHub")
 
@@ -402,7 +411,9 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
                         f.write(geoptimaliseerde_bytes)
                         
                     f_succes, f_melding = sla_foto_op_naar_github(geoptimaliseerde_bytes, foto_naam, f"Voeg foto toe voor artikel {artikel_nummer}")
-                    if not f_succes:
+                    if f_succes:
+                        st.success(f_melding)
+                    else:
                         st.warning(f_melding)
 
                 huidige_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
@@ -439,7 +450,6 @@ elif bewerk_rechten and beheer_actie == "✏️ Gereedschap wijzigen":
         if not zoek_bewerk:
             st.info("💡 Typ hierboven een zoekterm om het artikel te selecteren.")
         else:
-            # Filter rijen op basis van de zoekbalk
             mask_b = False
             for c in df.columns:
                 mask_b = mask_b | df[c].astype(str).str.contains(zoek_bewerk, case=False, na=False)
@@ -455,6 +465,9 @@ elif bewerk_rechten and beheer_actie == "✏️ Gereedschap wijzigen":
                 gekozen_item_str = st.selectbox("Selecteer het juiste item uit de zoekresultaten", bewerk_items_lijst)
                 rij_index = int(gekozen_item_str.split(" - Rijnr: ")[1])
                 huidige_rij = df.loc[rij_index]
+
+                # Foto uploader BUITEN het formulier geplaatst
+                b_nieuwe_foto = st.file_uploader("Nieuwe Bijlage (Foto uploaden ter vervanging)", type=["jpg", "png", "jpeg"], key="edit_foto")
 
                 with st.form("bewerk_form"):
                     bc1, bc2 = st.columns(2)
@@ -478,7 +491,6 @@ elif bewerk_rechten and beheer_actie == "✏️ Gereedschap wijzigen":
 
                     b_opmerkingen = st.text_area("Opmerkingen", value=str(huidige_rij.get(col_opmerkingen, "")))
                     b_bijlage = st.text_input("Huidige Bijlage / Foto", value=str(huidige_rij.get(col_bijlage, "")))
-                    b_nieuwe_foto = st.file_uploader("Nieuwe Bijlage (Foto uploaden ter vervanging)", type=["jpg", "png", "jpeg"], key="edit_foto")
 
                     bewerk_submit = st.form_submit_button(label="💾 Wijzigingen opslaan naar GitHub")
 
@@ -583,10 +595,7 @@ elif bewerk_rechten and beheer_actie == "🗑️ Gereedschap verwijderen":
 
                 with st.form("verwijder_form"):
                     st.warning(f"⚠️ Je staat op het punt om dit item te verwijderen:\n\n**Artikel:** {verwijderd_art} - **Omschrijving:** {verwijdeerde_omschrijving}")
-                    
-                    # Dubbele bevestiging: gebruiker moet het artikelnummer exact overtypen
                     bevestiging_tekst = st.text_input(f"Typ ter bevestiging het artikelnummer exact over ({verwijderd_art}):")
-                    
                     bevestig_verwijder = st.form_submit_button("❌ Ja, definitief verwijderen en opslaan naar GitHub", type="primary")
 
                     if bevestig_verwijder:

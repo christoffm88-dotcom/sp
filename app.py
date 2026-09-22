@@ -30,15 +30,18 @@ if "ping_thread_gestart" not in st.session_state:
 
 
 # --- CONFIGURATIE & HULPFUNCTIES VOOR GITHUB ---
-GITHUB_REPO = "JOUW_GEBRUIKERSNAAM/JOUW_REPO_NAAM"  # <-- Pas dit aan naar jouw GitHub repository (bijv. 'jan/gereedschap-app')
+GITHUB_REPO = "JOUW_GEBRUIKERSNAAM/JOUW_REPO_NAAM"  # <-- PAS DIT AAN (bijv. 'jan/gereedschap-app')
 BESTAND_NAAM = "gereedschap.csv"
 
 def sla_op_naar_github(df_to_save, commit_bericht):
-    """Slaat het CSV-bestand automatisch op in GitHub met een API-token."""
+    """Slaat het CSV-bestand direct op in GitHub zodat data veilig is bij crashes of code-updates."""
     token = st.session_state.get("github_token", "") or os.getenv("GITHUB_TOKEN", "")
+    
+    # Sla voor de zekerheid lokaal op als fallback
+    df_to_save.to_csv(BESTAND_NAAM, index=False)
+    
     if not token:
-        df_to_save.to_csv(BESTAND_NAAM, index=False)
-        return False, "Geen GitHub Token ingevuld. Data is alleen lokaal opgeslagen. Vul je token in via de zijkant om automatisch naar GitHub te pushen."
+        return False, "⚠️ Geen GitHub Token ingevuld. Data staat tijdelijk lokaal. Vul je token in via de zijkant in het beheermenu om automatisch naar GitHub te pushen!"
     
     try:
         g = Github(token)
@@ -59,10 +62,9 @@ def sla_op_naar_github(df_to_save, commit_bericht):
                 message=commit_bericht,
                 content=csv_inhoud
             )
-        return True, "Succesvol opgeslagen en gepusht naar GitHub!"
+        return True, "✅ Succesvol opgeslagen en veilig vastgelegd in GitHub!"
     except Exception as e:
-        df_to_save.to_csv(BESTAND_NAAM, index=False)
-        return False, f"Fout bij verbinden met GitHub: {e}. Data is lokaal opgeslagen."
+        return False, f"❌ Fout bij verbinden met GitHub: {e}. (Data staat lokaal opgeslagen)."
 
 
 # Pagina instellingen
@@ -154,21 +156,26 @@ kolommen_lijst = [
     "Opmerkingen",
 ]
 
-# Probeer het bestand in te lezen
-if not os.path.exists(BESTAND_NAAM):
-    try:
-        url_raw = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{BESTAND_NAAM}"
-        df = pd.read_csv(url_raw, sep=None, engine="python")
-        df.to_csv(BESTAND_NAAM, index=False)
-    except Exception:
-        df = pd.DataFrame(columns=kolommen_lijst)
+# --- ROBUUSTE DATA LADEN (GITHUB ALS BRON) ---
+df = None
+try:
+    # Probeer altijd eerst de meest recente versie van GitHub te halen (voorkomt verlies bij code-updates of crashes)
+    url_raw = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{BESTAND_NAAM}?t={time.time()}"
+    df = pd.read_csv(url_raw, sep=None, engine="python")
+    # Sla direct lokaal op als cache-backup
+    df.to_csv(BESTAND_NAAM, index=False)
+except Exception:
+    # Als GitHub niet bereikbaar is, val terug op het lokale bestand
+    if os.path.exists(BESTAND_NAAM):
+        try:
+            df = pd.read_csv(BESTAND_NAAM, sep=None, engine="python")
+        except Exception:
+            pass
 
-if os.path.exists(BESTAND_NAAM):
-    try:
-        df = pd.read_csv(BESTAND_NAAM, sep=None, engine="python")
-        df.columns = df.columns.str.strip()
-    except Exception:
-        df = pd.DataFrame(columns=kolommen_lijst)
+if df is None or df.empty:
+    df = pd.DataFrame(columns=kolommen_lijst)
+
+df.columns = df.columns.str.strip()
 
 kolommen = list(df.columns)
 col_artikel = "Artikel Nummer" if "Artikel Nummer" in kolommen else (kolommen[0] if len(kolommen) > 0 else "Artikel Nummer")
@@ -351,7 +358,7 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
 
                 succes, melding = sla_op_naar_github(df, f"Voeg artikel {artikel_nummer} toe")
                 if succes:
-                    st.success(f"✨ Artikel '{artikel_nummer} - {omschrijving}' is toegevoegd en automatisch opgeslagen op GitHub!")
+                    st.success(f"✨ Artikel '{artikel_nummer} - {omschrijving}' is toegevoegd en direct opgeslagen op GitHub!")
                 else:
                     st.warning(melding)
 
@@ -431,9 +438,9 @@ elif bewerk_rechten and beheer_actie == "✏️ Gereedschap wijzigen":
                     df.loc[rij_index, col_bijlage] = final_bijlage
                     df.loc[rij_index, col_opmerkingen] = b_opmerkingen
 
-                    succes, melding = sla_op_naar_github(df, f"Wijzig artikel {b_artikel}")
+                    succes, melding = sla_op_naار_github(df, f"Wijzig artikel {b_artikel}") if 'sla_op_naar_github' in globals() else sla_op_naar_github(df, f"Wijzig artikel {b_artikel}")
                     if succes:
-                        st.success("✅ Wijzigingen opgeslagen en automatisch gepusht naar GitHub!")
+                        st.success("✅ Wijzigingen opgeslagen en direct gepusht naar GitHub!")
                     else:
                         st.warning(melding)
     else:
@@ -460,15 +467,9 @@ elif bewerk_rechten and beheer_actie == "🗑️ Gereedschap verwijderen":
 
             succes, melding = sla_op_naar_github(df, f"Verwijder item {verwijderde_omschrijving}")
             if succes:
-                st.success(f"🗑️ '{verwijderde_omschrijving}' is verwijderd en de wijziging is op GitHub verwerkt!")
+                st.success(f"🗑️ '{verwijderde_omschrijving}' is verwijderd en de wijziging is direct op GitHub verwerkt!")
             else:
                 st.warning(melding)
             st.rerun()
     else:
         st.info("De lijst is momenteel leeg.")
-
-else:
-    st.error(
-        "⚠️ Het bestand 'gereedschap.csv' kon niet worden gevonden. "
-        "Zorg dat je repository gekoppeld is en dat de naam van de repository klopt in de code."
-    )

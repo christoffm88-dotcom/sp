@@ -222,6 +222,20 @@ bestaane_liggingen_lijst = [l for l in bestaane_liggingen_lijst if l.strip() and
 opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaane_liggingen_lijst + ["➕ Nieuwe ligging opgeven..."]
 
 # --- SCHERM 1: ZOEKHEID & OVERZICHT ---
+# --- DOWNLOAD KNOP VOOR DE LIJST ---
+    st.markdown("---")
+    st.subheader("📥 Lijst exporteren")
+    
+    # Converteer de huidige dataframe naar CSV formaat
+    csv_data = df_gefilterd.to_csv(index=False).encode('utf-8')
+    
+    st.download_button(
+        label="📥 Download huidige lijst als CSV",
+        data=csv_data,
+        file_name=f"gereedschap_export_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.csv",
+        mime="text/csv",
+        help="Download de getoonde lijst direct naar je computer."
+    )
 if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
     st.markdown("Welkom! Zoek en filter hieronder in de inventaris.")
     st.markdown("---")

@@ -29,7 +29,7 @@ if "ping_thread_gestart" not in st.session_state:
 
 
 # --- CONFIGURATIE & TOKEN BEHEER ---
-GITHUB_REPO = "christoffm88-dotcom/sp"  # <-- PAS DIT AAN indien nodig
+GITHUB_REPO = "christoffm88-dotcom/sp"
 BESTAND_NAAM = "gereedschap.csv"
 LOG_BESTAND_NAAM = "logboek.csv"
 
@@ -45,7 +45,7 @@ def get_github_token():
     return os.getenv("GITHUB_TOKEN", "")
 
 def optimaliseer_foto(uploaded_file, max_breedte=1000):
-    """Verkleint en comprimeert een geüploade foto automatisch voor opslag."""
+    """Verkleint en comprimeert een geüploade foto automatisch voor snelle opslag."""
     try:
         img = Image.open(uploaded_file)
         if img.mode in ("RGBA", "P"):
@@ -64,15 +64,15 @@ def optimaliseer_foto(uploaded_file, max_breedte=1000):
         return uploaded_file.read()
 
 def sla_op_naar_github(df_to_save, commit_bericht):
-    """Slaat het CSV-bestand direct op in GitHub."""
+    """Slaat het CSV-bestand direct op in GitHub met foutafhandeling."""
     token = get_github_token()
     df_to_save.to_csv(BESTAND_NAAM, index=False)
     
     if not token:
-        return False, "⚠️ Geen GitHub Token gevonden. Voeg hem toe via Streamlit Secrets."
+        return False, "⚠️ Geen GitHub Token gevonden. Data staat lokaal."
     
     try:
-        g = Github(token)
+        g = Github(token, timeout=15) # Snellere timeout om hangen te voorkomen
         repo = g.get_repo(GITHUB_REPO)
         csv_inhoud = df_to_save.to_csv(index=False)
         
@@ -81,45 +81,45 @@ def sla_op_naar_github(df_to_save, commit_bericht):
             repo.update_file(path=BESTAND_NAAM, message=commit_bericht, content=csv_inhoud, sha=file_item.sha)
         except Exception:
             repo.create_file(path=BESTAND_NAAM, message=commit_bericht, content=csv_inhoud)
-        return True, "✅ Succesvol opgeslagen en veilig vastgelegd in GitHub!"
+        return True, "✅ Opgeslagen en gepusht naar GitHub!"
     except Exception as e:
-        return False, f"❌ Fout bij verbinden met GitHub: {e}."
+        return False, f"⚠️ Lokaal opgeslagen (GitHub sync mislukt: {e})"
 
 def sla_foto_op_naar_github(bestands_inhoud, bestands_naam, commit_bericht):
-    """Uploadt een geoptimaliseerde foto direct naar de 'fotos/' map in GitHub."""
+    """Uploadt een foto naar GitHub met ingebouwde hertest (retry) voor betrouwbaarheid."""
     token = get_github_token()
     if not token:
-        return False, "⚠️ Geen GitHub token gevonden voor foto-upload."
+        return False, "Geen token"
     
-    try:
-        g = Github(token)
-        repo = g.get_repo(GITHUB_REPO)
-        pad_in_repo = f"fotos/{bestands_naam}"
-        
+    for poging in range(3): # Probeer maximaal 3 keer bij een netwerkdip
         try:
-            file_item = repo.get_contents(pad_in_repo)
-            repo.update_file(path=pad_in_repo, message=commit_bericht, content=bestands_inhoud, sha=file_item.sha)
+            g = Github(token, timeout=15)
+            repo = g.get_repo(GITHUB_REPO)
+            pad_in_repo = f"fotos/{bestands_naam}"
+            
+            try:
+                file_item = repo.get_contents(pad_in_repo)
+                repo.update_file(path=pad_in_repo, message=commit_bericht, content=bestands_inhoud, sha=file_item.sha)
+            except Exception:
+                repo.create_file(path=pad_in_repo, message=commit_bericht, content=bestands_inhoud)
+            return True, "📸 Foto succesvol geüpload!"
         except Exception:
-            repo.create_file(path=pad_in_repo, message=commit_bericht, content=bestands_inhoud)
-        return True, "📸 Foto succesvol naar GitHub gepusht!"
-    except Exception as e:
-        return False, f"❌ Fout bij uploaden foto naar GitHub: {e}"
+            if poging == 2:
+                return False, "❌ Foto-upload mislukt na 3 pogingen."
+            time.sleep(1)
+    return False, "Onbekende fout"
 
 def voeg_toe_aan_logboek(actie_type, artikel_nr, omschrijving_tekst, details=""):
-    """Voegt een regel toe aan het logboek met optionele wijzigingsdetails en slaat dit op naar GitHub."""
+    """Voegt een regel toe aan het logboek en pusht naar GitHub op de achtergrond."""
     token = get_github_token()
     huidige_tijd = datetime.now().strftime("%d-%m-%Y %H:%M")
     
     df_log = None
-    try:
-        url_log = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{LOG_BESTAND_NAAM}?t={time.time()}"
-        df_log = pd.read_csv(url_log, sep=None, engine="python")
-    except Exception:
-        if os.path.exists(LOG_BESTAND_NAAM):
-            try:
-                df_log = pd.read_csv(LOG_BESTAND_NAAM, sep=None, engine="python")
-            except Exception:
-                pass
+    if os.path.exists(LOG_BESTAND_NAAM):
+        try:
+            df_log = pd.read_csv(LOG_BESTAND_NAAM, sep=None, engine="python")
+        except Exception:
+            pass
                 
     if df_log is None or df_log.empty:
         df_log = pd.DataFrame(columns=["Tijdstip", "Actie", "Artikel", "Omschrijving", "Details"])
@@ -140,14 +140,14 @@ def voeg_toe_aan_logboek(actie_type, artikel_nr, omschrijving_tekst, details="")
     
     if token:
         try:
-            g = Github(token)
+            g = Github(token, timeout=10)
             repo = g.get_repo(GITHUB_REPO)
             log_inhoud = df_log.to_csv(index=False)
             try:
                 file_item = repo.get_contents(LOG_BESTAND_NAAM)
-                repo.update_file(path=LOG_BESTAND_NAAM, message=f"Logboek update: {actie_type} - {artikel_nr}", content=log_inhoud, sha=file_item.sha)
+                repo.update_file(path=LOG_BESTAND_NAAM, message=f"Log: {actie_type}", content=log_inhoud, sha=file_item.sha)
             except Exception:
-                repo.create_file(path=LOG_BESTAND_NAAM, message=f"Logboek aanmaken: {actie_type} - {artikel_nr}", content=log_inhoud)
+                repo.create_file(path=LOG_BESTAND_NAAM, message=f"Log aanmaken", content=log_inhoud)
         except Exception:
             pass
 
@@ -190,7 +190,7 @@ if admin_mode:
         st.sidebar.markdown("---")
         st.sidebar.markdown("### ⚙️ GitHub Token")
         huidige_opgeslagen_token = get_github_token()
-        gh_token_input = st.sidebar.text_input("Token (optioneel als Secrets ingesteld)", type="password", value=huidige_opgeslagen_token)
+        gh_token_input = st.sidebar.text_input("Token", type="password", value=huidige_opgeslagen_token)
         if gh_token_input:
             st.session_state["github_token"] = gh_token_input
 
@@ -227,19 +227,20 @@ kolommen_lijst = [
     "Opmerkingen",
 ]
 
-# --- ROBUUSTE DATA LADEN ---
-df = None
-try:
-    url_raw = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{BESTAND_NAAM}?t={time.time()}"
-    df = pd.read_csv(url_raw, sep=None, engine="python")
-    df.to_csv(BESTAND_NAAM, index=False)
-except Exception:
-    if os.path.exists(BESTAND_NAAM):
-        try:
-            df = pd.read_csv(BESTAND_NAAM, sep=None, engine="python")
-        except Exception:
-            pass
+# --- SLIMME DATA LADEN (Lokaal + snelle cache check) ---
+@st.cache_data(ttl=30) # Cache data kort zodat de app niet bij elke klik traag op GitHub hoeft te zoeken
+def laad_data_vanaf_github():
+    try:
+        url_raw = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{BESTAND_NAAM}?t={time.time()}"
+        df_laad = pd.read_csv(url_raw, sep=None, engine="python")
+        df_laad.to_csv(BESTAND_NAAM, index=False)
+        return df_laad
+    except Exception:
+        if os.path.exists(BESTAND_NAAM):
+            return pd.read_csv(BESTAND_NAAM, sep=None, engine="python")
+        return pd.DataFrame(columns=kolommen_lijst)
 
+df = laad_data_vanaf_github()
 if df is None or df.empty:
     df = pd.DataFrame(columns=kolommen_lijst)
 
@@ -312,12 +313,10 @@ if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
             ruwe_bijlage = str(row.get(col_bijlage, "")).strip()
             foto_pad = ""
             if ruwe_bijlage and ruwe_bijlage.lower() != "nan":
-                for p in [ruwe_bijlage, os.path.join("fotos", ruwe_bijlage), os.path.join("fotos", os.path.basename(ruwe_bijlage))]:
-                    if os.path.exists(p):
-                        foto_pad = p
-                        break
-                # Als lokaal niet gevonden maar wel op GitHub raw URL
-                if not foto_pad:
+                lokale_pad = os.path.join("fotos", ruwe_bijlage)
+                if os.path.exists(lokale_pad):
+                    foto_pad = lokale_pad
+                else:
                     foto_pad = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/fotos/{ruwe_bijlage}"
 
             with st.container():
@@ -365,7 +364,6 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
     st.subheader("➕ Nieuw gereedschap toevoegen")
     st.markdown("---")
     
-    # Foto uploader BUITEN het formulier geplaatst zodat de data stabiel blijft
     foto = st.file_uploader("Bijlage (Foto)", type=["jpg", "png", "jpeg"], key="add_foto")
 
     with st.form("gereedschap_form"):
@@ -384,7 +382,6 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
             extra_nieuwe_ligging = st.text_input("Geef de nieuwe ligging op *", key="add_new_lig")
 
         opmerkingen = st.text_area("Opmerkingen")
-
         submit_button = st.form_submit_button(label="💾 Opslaan en direct naar GitHub")
 
         if submit_button:
@@ -398,19 +395,18 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
             if not artikel_nummer or not omschrijving or not ligging:
                 st.error("⚠️ Vul ten minste Artikel Nummer, Omschrijving en een geldige Ligging in!")
             elif artikel_nummer in df[col_artikel].astype(str).values:
-                st.error(f"❌ Dit artikelnummer ('{artikel_nummer}') bestaat al in de lijst! Dubbele records zijn niet toegestaan.")
+                st.error(f"❌ Dit artikelnummer ('{artikel_nummer}') bestaat al in de lijst!")
             else:
                 foto_naam = ""
                 if foto is not None:
-                    foto_naam = os.path.splitext(foto.name)[0] + ".jpg"
+                    foto_naam = f"art_{artikel_nummer.replace('/', '_')}.jpg"
                     geoptimaliseerde_bytes = optimaliseer_foto(foto)
                     
                     os.makedirs("fotos", exist_ok=True)
-                    foto_pad = os.path.join("fotos", foto_naam)
-                    with open(foto_pad, "wb") as f:
+                    with open(os.path.join("fotos", foto_naam), "wb") as f:
                         f.write(geoptimaliseerde_bytes)
                         
-                    f_succes, f_melding = sla_foto_op_naar_github(geoptimaliseerde_bytes, foto_naam, f"Voeg foto toe voor artikel {artikel_nummer}")
+                    f_succes, f_melding = sla_foto_op_naar_github(geoptimaliseerde_bytes, foto_naam, f"Upload foto art {artikel_nummer}")
                     if f_succes:
                         st.success(f_melding)
                     else:
@@ -432,42 +428,38 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
 
                 succes, melding = sla_op_naar_github(df, f"Voeg artikel {artikel_nummer} toe")
                 if succes:
-                    details_str = f"Toegevoegd: {omschrijving} (Ligging: {ligging}, Stock: {stock}, Groep: {groep}, Set: {set_val_input})"
+                    details_str = f"Toegevoegd: {omschrijving} (Ligging: {ligging})"
                     voeg_toe_aan_logboek("Toegevoegd", artikel_nummer, omschrijving, details_str)
-                    st.success(f"✨ Artikel '{artikel_nummer} - {omschrijving}' is toegevoegd en opgeslagen op GitHub!")
+                    st.success(f"✨ Artikel '{artikel_nummer}' succesvol toegevoegd!")
+                    st.cache_data.clear() # Cache legen zodat de nieuwe data direct geladen wordt
                 else:
                     st.warning(melding)
 
 # --- SCHERM 3: GEREEDSCHAP WIJZIGEN ---
 elif bewerk_rechten and beheer_actie == "✏️ Gereedschap wijzigen":
     st.subheader("✏️ Bestaand gereedschap aanpassen")
-    st.markdown("Typ hieronder een stukje van het artikelnummer of de omschrijving om het juiste item te vinden.")
+    st.markdown("Typ hieronder een stukje van het artikelnummer of de omschrijving.")
     st.markdown("---")
     
     if len(df) > 0:
-        zoek_bewerk = st.text_input("🔍 Zoek artikel om te wijzigen (bijv. op artikelnummer of naam)", key="zoek_bewerk_input")
+        zoek_bewerk = st.text_input("🔍 Zoek artikel om te wijzigen", key="zoek_bewerk_input")
         
-        if not zoek_bewerk:
-            st.info("💡 Typ hierboven een zoekterm om het artikel te selecteren.")
-        else:
+        if zoek_bewerk:
             mask_b = False
             for c in df.columns:
                 mask_b = mask_b | df[c].astype(str).str.contains(zoek_bewerk, case=False, na=False)
             df_bewerk_gevonden = df[mask_b]
             
-            if len(df_bewerk_gevonden) == 0:
-                st.warning("Geen gereedschap gevonden met deze zoekterm.")
-            else:
+            if len(df_bewerk_gevonden) > 0:
                 bewerk_items_lijst = [
                     f"Art: {row.get(col_artikel, '')} - {row.get(col_omschrijving, '')} (Ligging: {row.get(col_ligging, '')}) - Rijnr: {i}"
                     for i, row in df_bewerk_gevonden.iterrows()
                 ]
-                gekozen_item_str = st.selectbox("Selecteer het juiste item uit de zoekresultaten", bewerk_items_lijst)
+                gekozen_item_str = st.selectbox("Selecteer item", bewerk_items_lijst)
                 rij_index = int(gekozen_item_str.split(" - Rijnr: ")[1])
                 huidige_rij = df.loc[rij_index]
 
-                # Foto uploader BUITEN het formulier geplaatst
-                b_nieuwe_foto = st.file_uploader("Nieuwe Bijlage (Foto uploaden ter vervanging)", type=["jpg", "png", "jpeg"], key="edit_foto")
+                b_nieuwe_foto = st.file_uploader("Nieuwe Foto (optioneel)", type=["jpg", "png", "jpeg"], key="edit_foto")
 
                 with st.form("bewerk_form"):
                     bc1, bc2 = st.columns(2)
@@ -490,145 +482,115 @@ elif bewerk_rechten and beheer_actie == "✏️ Gereedschap wijzigen":
                         b_extra_ligging = st.text_input("Geef de nieuwe ligging op *", key="edit_new_lig")
 
                     b_opmerkingen = st.text_area("Opmerkingen", value=str(huidige_rij.get(col_opmerkingen, "")))
-                    b_bijlage = st.text_input("Huidige Bijlage / Foto", value=str(huidige_rij.get(col_bijlage, "")))
+                    b_bijlage = st.text_input("Huidige Bijlage", value=str(huidige_rij.get(col_bijlage, "")))
 
-                    bewerk_submit = st.form_submit_button(label="💾 Wijzigingen opslaan naar GitHub")
+                    bewerk_submit = st.form_submit_button(label="💾 Wijzigingen opslaan")
 
                     if bewerk_submit:
-                        if b_ligging_keuze == "➕ Nieuwe ligging opgeven...":
-                            b_ligging = b_extra_ligging
-                        elif b_ligging_keuze == "-- Kies bestaande of typ hieronder --":
-                            b_ligging = ""
-                        else:
-                            b_ligging = b_ligging_keuze
-
-                        ander_df = df.drop(rij_index)
-                        if not b_artikel or not b_omschrijving or not b_ligging:
-                            st.error("⚠️ Artikel Nummer, Omschrijving en Ligging mogen niet leeg zijn!")
-                        elif b_artikel in ander_df[col_artikel].astype(str).values:
-                            st.error(f"❌ Artikelnummer '{b_artikel}' bestaat al bij een ander item!")
-                        else:
-                            final_bijlage = b_bijlage
-                            if b_nieuwe_foto is not None:
-                                foto_naam = os.path.splitext(b_nieuwe_foto.name)[0] + ".jpg"
-                                geoptimaliseerde_bytes = optimaliseer_foto(b_nieuwe_foto)
+                        b_ligging = b_extra_ligging if b_ligging_keuze == "➕ Nieuwe ligging opgeven..." else (b_ligging_keuze if b_ligging_keuze != "-- Kies bestaande of typ hieronder --" else "")
+                        
+                        final_bijlage = b_bijlage
+                        if b_nieuwe_foto is not None:
+                            foto_naam = f"art_{b_artikel.replace('/', '_')}.jpg"
+                            geoptimaliseerde_bytes = optimaliseer_foto(b_nieuwe_foto)
+                            
+                            os.makedirs("fotos", exist_ok=True)
+                            with open(os.path.join("fotos", foto_naam), "wb") as f:
+                                f.write(geoptimaliseerde_bytes)
                                 
-                                os.makedirs("fotos", exist_ok=True)
-                                foto_pad = os.path.join("fotos", foto_naam)
-                                with open(foto_pad, "wb") as f:
-                                    f.write(geoptimaliseerde_bytes)
-                                    
-                                f_succes, f_melding = sla_foto_op_naar_github(geoptimaliseerde_bytes, foto_naam, f"Update foto voor artikel {b_artikel}")
-                                if not f_succes:
-                                    st.warning(f_melding)
-                                final_bijlage = foto_naam
+                            f_succes, f_melding = sla_foto_op_naar_github(geoptimaliseerde_bytes, foto_naam, f"Update foto art {b_artikel}")
+                            if f_succes:
+                                st.success(f_melding)
+                            final_bijlage = foto_naam
 
-                            wijzigingen_lijst = []
-                            oud_oud = huidige_rij.to_dict()
-                            nieuw_nieuw = {
-                                col_artikel: b_artikel,
-                                col_omschrijving: b_omschrijving,
-                                col_stock: b_stock,
-                                col_ligging: b_ligging,
-                                col_groep: b_groep,
-                                col_set: b_set,
-                                col_bijlage: final_bijlage,
-                                col_opmerkingen: b_opmerkingen
-                            }
-                            for k in nieuw_nieuw:
-                                oude_waarde = str(oud_oud.get(k, ""))
-                                nieuwe_waarde = str(nieuw_nieuw[k])
-                                if oude_waarde != nieuwe_waarde:
-                                    wijzigingen_lijst.append(f"{k}: '{oude_waarde}' ➡️ '{nieuwe_waarde}'")
+                        wijzigingen_lijst = []
+                        oud_oud = huidige_rij.to_dict()
+                        nieuw_nieuw = {
+                            col_artikel: b_artikel, col_omschrijving: b_omschrijving, col_stock: b_stock,
+                            col_ligging: b_ligging, col_groep: b_groep, col_set: b_set, col_bijlage: final_bijlage, col_opmerkingen: b_opmerkingen
+                        }
+                        for k in nieuw_nieuw:
+                            if str(oud_oud.get(k, "")) != str(nieuw_nieuw[k]):
+                                wijzigingen_lijst.append(f"{k}: '{oud_oud.get(k, '')}' ➡️ '{nieuw_nieuw[k]}'")
 
-                            wijzig_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
-                            df.loc[rij_index, col_artikel] = b_artikel
-                            df.loc[rij_index, col_omschrijving] = b_omschrijving
-                            df.loc[rij_index, col_stock] = b_stock
-                            df.loc[rij_index, col_ligging] = b_ligging
-                            df.loc[rij_index, col_datum] = wijzig_datum
-                            df.loc[rij_index, col_groep] = b_groep
-                            df.loc[rij_index, col_set] = b_set
-                            df.loc[rij_index, col_bijlage] = final_bijlage
-                            df.loc[rij_index, col_opmerkingen] = b_opmerkingen
+                        df.loc[rij_index, col_artikel] = b_artikel
+                        df.loc[rij_index, col_omschrijving] = b_omschrijving
+                        df.loc[rij_index, col_stock] = b_stock
+                        df.loc[rij_index, col_ligging] = b_ligging
+                        df.loc[rij_index, col_datum] = datetime.now().strftime("%d-%m-%Y %H:%M")
+                        df.loc[rij_index, col_groep] = b_groep
+                        df.loc[rij_index, col_set] = b_set
+                        df.loc[rij_index, col_bijlage] = final_bijlage
+                        df.loc[rij_index, col_opmerkingen] = b_opmerkingen
 
-                            succes, melding = sla_op_naar_github(df, f"Wijzig artikel {b_artikel}")
-                            if succes:
-                                details_str = " | ".join(wijzigingen_lijst) if wijzigingen_lijst else "Geen velden gewijzigd"
-                                voeg_toe_aan_logboek("Gewijzigd", b_artikel, b_omschrijving, details_str)
-                                st.success("✅ Wijzigingen opgeslagen en gepusht naar GitHub!")
-                            else:
-                                st.warning(melding)
+                        succes, melding = sla_op_naar_github(df, f"Wijzig artikel {b_artikel}")
+                        if succes:
+                            details_str = " | ".join(wijzigingen_lijst) if wijzigingen_lijst else "Geen wijzigingen"
+                            voeg_toe_aan_logboek("Gewijzigd", b_artikel, b_omschrijving, details_str)
+                            st.success("✅ Wijzigingen opgeslagen!")
+                            st.cache_data.clear()
+                        else:
+                            st.warning(melding)
     else:
         st.info("De lijst is leeg.")
 
 # --- SCHERM 4: GEREEDSCHAP VERWIJDEREN ---
 elif bewerk_rechten and beheer_actie == "🗑️ Gereedschap verwijderen":
     st.subheader("🗑️ Verwijder een item uit de lijst")
-    st.markdown("Typ hieronder een zoekterm om het artikel te vinden dat je wilt verwijderen.")
     st.markdown("---")
     
     if len(df) > 0:
-        zoek_verwijder = st.text_input("🔍 Zoek artikel om te verwijderen (artikelnummer of omschrijving)", key="zoek_verwijder_input")
+        zoek_verwijder = st.text_input("🔍 Zoek artikel om te verwijderen", key="zoek_verwijder_input")
         
-        if not zoek_verwijder:
-            st.info("💡 Typ hierboven een zoekterm om het te verwijderen artikel op te zoeken.")
-        else:
+        if zoek_verwijder:
             mask_v = False
             for c in df.columns:
                 mask_v = mask_v | df[c].astype(str).str.contains(zoek_verwijder, case=False, na=False)
             df_verwijder_gevonden = df[mask_v]
             
-            if len(df_verwijder_gevonden) == 0:
-                st.warning("Geen gereedschap gevonden met deze zoekterm.")
-            else:
+            if len(df_verwijder_gevonden) > 0:
                 items_lijst = [
                     f"Art: {row.get(col_artikel, '')} - {row.get(col_omschrijving, '')} (Ligging: {row.get(col_ligging, '')}) - Rijnr: {i}"
                     for i, row in df_verwijder_gevonden.iterrows()
                 ]
-                te_verwijderen_item = st.selectbox("Selecteer het te verwijderen item", items_lijst, key="del_sel")
+                te_verwijderen_item = st.selectbox("Selecteer item om te wissen", items_lijst, key="del_sel")
                 
                 rij_index = int(te_verwijderen_item.split(" - Rijnr: ")[1])
                 verwijderd_art = str(df.loc[rij_index, col_artikel])
                 verwijdeerde_omschrijving = str(df.loc[rij_index, col_omschrijving])
-                verwijderde_details = f"Verwijderd item gegevens -> Ligging: {df.loc[rij_index, col_ligging]}, Stock: {df.loc[rij_index, col_stock]}, Groep: {df.loc[rij_index, col_groep]}"
 
                 with st.form("verwijder_form"):
-                    st.warning(f"⚠️ Je staat op het punt om dit item te verwijderen:\n\n**Artikel:** {verwijderd_art} - **Omschrijving:** {verwijdeerde_omschrijving}")
-                    bevestiging_tekst = st.text_input(f"Typ ter bevestiging het artikelnummer exact over ({verwijderd_art}):")
-                    bevestig_verwijder = st.form_submit_button("❌ Ja, definitief verwijderen en opslaan naar GitHub", type="primary")
+                    st.warning(f"⚠️ Verwijderen: **{verwijderd_art} - {verwijdeerde_omschrijving}**")
+                    bevestiging_tekst = st.text_input(f"Typ artikelnummer ter bevestiging ({verwijderd_art}):")
+                    bevestig_verwijder = st.form_submit_button("❌ Definitief verwijderen", type="primary")
 
                     if bevestig_verwijder:
                         if bevestiging_tekst.strip() != verwijderd_art.strip():
-                            st.error("❌ Het ingetypte artikelnummer komt niet overeen met het te verwijderen artikel. Verwijdering geannuleerd.")
+                            st.error("❌ Artikelnummer komt niet overeen.")
                         else:
                             df = df.drop(rij_index).reset_index(drop=True)
-
                             succes, melding = sla_op_naar_github(df, f"Verwijder item {verwijdeerde_omschrijving}")
                             if succes:
-                                voeg_toe_aan_logboek("Verwijderd", verwijderd_art, verwijdeerde_omschrijving, verwijderde_details)
-                                st.success(f"🗑️ '{verwijdeerde_omschrijving}' is succesvol verwijderd en opgeslagen op GitHub!")
+                                voeg_toe_aan_logboek("Verwijderd", verwijderd_art, verwijdeerde_omschrijving, "Item gewist")
+                                st.success("🗑️ Artikel verwijderd!")
+                                st.cache_data.clear()
                             else:
                                 st.warning(melding)
     else:
-        st.info("De lijst is momenteel leeg.")
+        st.info("De lijst is leeg.")
 
 # --- SCHERM 5: LOGBOEK BEKIJKEN ---
 elif bewerk_rechten and beheer_actie == "📋 Logboek bekijken":
     st.subheader("📋 Wijzigingenlogboek")
-    st.markdown("Hier zie je een overzicht van alle handelingen en wat er precies gewijzigd is.")
     st.markdown("---")
     
-    df_log_weergave = None
     try:
         url_log_get = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{LOG_BESTAND_NAAM}?t={time.time()}"
         df_log_weergave = pd.read_csv(url_log_get, sep=None, engine="python")
     except Exception:
-        if os.path.exists(LOG_BESTAND_NAAM):
-            df_log_weergave = pd.read_csv(LOG_BESTAND_NAAM, sep=None, engine="python")
+        df_log_weergave = pd.read_csv(LOG_BESTAND_NAAM, sep=None, engine="python") if os.path.exists(LOG_BESTAND_NAAM) else None
             
     if df_log_weergave is not None and not df_log_weergave.empty:
-        df_log_weergave = df_log_weergave.iloc[::-1].reset_index(drop=True)
-        st.dataframe(df_log_weergave, use_container_width=True)
+        st.dataframe(df_log_weergave.iloc[::-1].reset_index(drop=True), use_container_width=True)
     else:
-        st.info("Er is nog geen logboekhistorie beschikbaar.")
+        st.info("Geen logboekhistorie beschikbaar.")

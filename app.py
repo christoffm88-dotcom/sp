@@ -49,7 +49,6 @@ def optimaliseer_foto(uploaded_file, max_breedte=600):
     try:
         img = Image.open(uploaded_file)
         
-        # Automatisch corrigeren voor EXIF orientatie (voorkomt dat iPad foto's gekanteld opslaat)
         try:
             for orientation in Image.ExifTags.TAGS.keys():
                 if Image.ExifTags.TAGS[orientation] == 'Orientation':
@@ -72,7 +71,7 @@ def optimaliseer_foto(uploaded_file, max_breedte=600):
             img = img.resize((max_breedte, nieuwe_hoogte), Image.Resampling.LANCZOS)
             
         buffer = BytesIO()
-        img.save(buffer, format="JPEG", quality=75) # Extra lichte compressie voor maximale betrouwbaarheid
+        img.save(buffer, format="JPEG", quality=75)
         return buffer.getvalue()
     except Exception:
         uploaded_file.seek(0)
@@ -188,45 +187,6 @@ st.markdown(
 if not os.path.exists("fotos"):
     os.makedirs("fotos")
 
-# --- ZIJKBALK & ADMIN LOGIN ---
-st.sidebar.title("🔐 Beheer")
-st.sidebar.markdown("---")
-admin_mode = st.sidebar.checkbox("Inloggen als Beheerder")
-
-bewerk_rechten = False
-beheer_actie = "🔍 Zoeken & Overzicht"
-
-if admin_mode:
-    wachtwoord = st.sidebar.text_input("Voer wachtwoord in", type="password")
-    if wachtwoord == "gereedschap123":
-        bewerk_rechten = True
-        st.sidebar.success("✅ Ingelogd als beheerder")
-        
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("### ⚙️ GitHub Token")
-        huidige_opgeslagen_token = get_github_token()
-        gh_token_input = st.sidebar.text_input("Token", type="password", value=huidige_opgeslagen_token)
-        if gh_token_input:
-            st.session_state["github_token"] = gh_token_input
-
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("### ⚡ Snelkoppelingen")
-        beheer_actie = st.sidebar.radio(
-            "Kies een actie:",
-            [
-                "🔍 Zoeken & Overzicht",
-                "➕ Gereedschap toevoegen",
-                "✏️ Gereedschap wijzigen",
-                "🗑️ Gereedschap verwijderen",
-                "📋 Logboek bekijken",
-            ],
-        )
-    else:
-        st.sidebar.error("❌ Onjuist wachtwoord")
-
-st.sidebar.markdown("---")
-st.sidebar.info("💡 **Tip:** Zonder inlog kun je de lijst direct bekijken.")
-
 # --- HOOFDSCHERM ---
 st.title("🛠️ Gereedschap & Locatie Beheer")
 
@@ -280,6 +240,58 @@ bestaane_liggingen_lijst = sorted(df[col_ligging].dropna().astype(str).unique().
 bestaane_liggingen_lijst = [l for l in bestaane_liggingen_lijst if l.strip() and l.lower() != "nan"]
 opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaane_liggingen_lijst + ["➕ Nieuwe ligging opgeven..."]
 
+# --- ZIJKBALK & ADMIN LOGIN ---
+st.sidebar.title("🔐 Beheer")
+st.sidebar.markdown("---")
+
+# DOWNLOAD KNOP NU BOVENAAN IN DE ZIJKBALK
+st.sidebar.subheader("📥 Exporteren")
+csv_data_sidebar = df.to_csv(index=False).encode('utf-8')
+st.sidebar.download_button(
+    label="📥 Download volledige lijst",
+    data=csv_data_sidebar,
+    file_name=f"gereedschap_export_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.csv",
+    mime="text/csv",
+    help="Download de inventarislijst direct naar je computer."
+)
+
+st.sidebar.markdown("---")
+admin_mode = st.sidebar.checkbox("Inloggen als Beheerder")
+
+bewerk_rechten = False
+beheer_actie = "🔍 Zoeken & Overzicht"
+
+if admin_mode:
+    wachtwoord = st.sidebar.text_input("Voer wachtwoord in", type="password")
+    if wachtwoord == "gereedschap123":
+        bewerk_rechten = True
+        st.sidebar.success("✅ Ingelogd als beheerder")
+        
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### ⚙️ GitHub Token")
+        huidige_opgeslagen_token = get_github_token()
+        gh_token_input = st.sidebar.text_input("Token", type="password", value=huidige_opgeslagen_token)
+        if gh_token_input:
+            st.session_state["github_token"] = gh_token_input
+
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### ⚡ Snelkoppelingen")
+        beheer_actie = st.sidebar.radio(
+            "Kies een actie:",
+            [
+                "🔍 Zoeken & Overzicht",
+                "➕ Gereedschap toevoegen",
+                "✏️ Gereedschap wijzigen",
+                "🗑️ Gereedschap verwijderen",
+                "📋 Logboek bekijken",
+            ],
+        )
+    else:
+        st.sidebar.error("❌ Onjuist wachtwoord")
+
+st.sidebar.markdown("---")
+st.sidebar.info("💡 **Tip:** Zonder inlog kun je de lijst direct bekijken.")
+
 # --- SCHERM 1: ZOEKHEID & OVERZICHT ---
 if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
     st.markdown("Welkom! Zoek en filter hieronder in de inventaris.")
@@ -308,18 +320,6 @@ if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
     if gekozen_groep != "Alle": df_gefilterd = df_gefilterd[df_gefilterd[col_groep].astype(str) == gekozen_groep]
     if gekozen_set != "Alle": df_gefilterd = df_gefilterd[df_gefilterd[col_set].astype(str) == gekozen_set]
     if gekozen_ligging != "Alle": df_gefilterd = df_gefilterd[df_gefilterd[col_ligging].astype(str) == gekozen_ligging]
-
-    # --- DOWNLOAD KNOP IN DE ZIJKBALK ---
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("📥 Exporteren")
-    csv_data = df_gefilterd.to_csv(index=False).encode('utf-8')
-    st.sidebar.download_button(
-        label="📥 Download lijst als CSV",
-        data=csv_data,
-        file_name=f"gereedschap_export_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.csv",
-        mime="text/csv",
-        help="Download de getoonde of gefilterde lijst direct naar je computer."
-    )
 
     st.markdown(f"**Aantal resultaten gevonden:** {len(df_gefilterd)}")
     st.markdown("---")
@@ -609,3 +609,4 @@ elif bewerk_rechten and beheer_actie == "📋 Logboek bekijken":
         st.dataframe(df_log_weergave.iloc[::-1].reset_index(drop=True), use_container_width=True)
     else:
         st.info("Geen logboekhistorie beschikbaar.")
+     

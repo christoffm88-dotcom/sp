@@ -240,12 +240,8 @@ bestaane_liggingen_lijst = sorted(df[col_ligging].dropna().astype(str).unique().
 bestaane_liggingen_lijst = [l for l in bestaane_liggingen_lijst if l.strip() and l.lower() != "nan"]
 opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaane_liggingen_lijst + ["➕ Nieuwe ligging opgeven..."]
 
-# --- ZIJKBALK: DIRECT BOVENAAN DOWNLOADEN & BEHEER ---
-st.sidebar.title("🔐 Beheer")
-st.sidebar.markdown("---")
-
-# DOWNLOAD KNOP DIRECT BOVENAAN IN DE ZIJKBALK
-st.sidebar.subheader("📥 Exporteren")
+# --- ZIJKBALK: DOWNLOADKNOP STAAT NU ABSOLUUT BOVENAAN ---
+st.sidebar.subheader("📥 Snelle Export")
 csv_data_sidebar = df.to_csv(index=False).encode('utf-8')
 st.sidebar.download_button(
     label="📥 Download volledige lijst",
@@ -255,6 +251,8 @@ st.sidebar.download_button(
     help="Download de inventarislijst direct naar je computer."
 )
 
+st.sidebar.markdown("---")
+st.sidebar.title("🔐 Beheer")
 st.sidebar.markdown("---")
 admin_mode = st.sidebar.checkbox("Inloggen als Beheerder")
 

@@ -72,7 +72,7 @@ def sla_op_naar_github(df_to_save, commit_bericht):
         return False, "⚠️ Geen GitHub Token gevonden. Data staat lokaal."
     
     try:
-        g = Github(token, timeout=15) # Snellere timeout om hangen te voorkomen
+        g = Github(token, timeout=15)
         repo = g.get_repo(GITHUB_REPO)
         csv_inhoud = df_to_save.to_csv(index=False)
         
@@ -91,7 +91,7 @@ def sla_foto_op_naar_github(bestands_inhoud, bestands_naam, commit_bericht):
     if not token:
         return False, "Geen token"
     
-    for poging in range(3): # Probeer maximaal 3 keer bij een netwerkdip
+    for poging in range(3):
         try:
             g = Github(token, timeout=15)
             repo = g.get_repo(GITHUB_REPO)
@@ -227,8 +227,8 @@ kolommen_lijst = [
     "Opmerkingen",
 ]
 
-# --- SLIMME DATA LADEN (Lokaal + snelle cache check) ---
-@st.cache_data(ttl=30) # Cache data kort zodat de app niet bij elke klik traag op GitHub hoeft te zoeken
+# --- SLIMME DATA LADEN ---
+@st.cache_data(ttl=30)
 def laad_data_vanaf_github():
     try:
         url_raw = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{BESTAND_NAAM}?t={time.time()}"
@@ -294,6 +294,18 @@ if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
     if gekozen_set != "Alle": df_gefilterd = df_gefilterd[df_gefilterd[col_set].astype(str) == gekozen_set]
     if gekozen_ligging != "Alle": df_gefilterd = df_gefilterd[df_gefilterd[col_ligging].astype(str) == gekozen_ligging]
 
+    # --- DOWNLOAD KNOP IN DE ZIJKBALK ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📥 Exporteren")
+    csv_data = df_gefilterd.to_csv(index=False).encode('utf-8')
+    st.sidebar.download_button(
+        label="📥 Download lijst als CSV",
+        data=csv_data,
+        file_name=f"gereedschap_export_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.csv",
+        mime="text/csv",
+        help="Download de getoonde of gefilterde lijst direct naar je computer."
+    )
+
     st.markdown(f"**Aantal resultaten gevonden:** {len(df_gefilterd)}")
     st.markdown("---")
 
@@ -346,18 +358,6 @@ if not bewerk_rechten or beheer_actie == "🔍 Zoeken & Overzicht":
                     if datum_val and str(datum_val).lower() != "nan": st.markdown(f"📅 **Datum:** {datum_val}")
                     if opm_val and str(opm_val).lower() != "nan": st.markdown(f"📝 **Opmerking:** {opm_val}")
                 st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
-
-    # --- DOWNLOAD KNOP ---
-    st.markdown("---")
-    st.subheader("📥 Lijst exporteren")
-    csv_data = df_gefilterd.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Download huidige lijst als CSV",
-        data=csv_data,
-        file_name=f"gereedschap_export_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.csv",
-        mime="text/csv",
-        help="Download de getoonde lijst direct naar je computer."
-    )
 
 # --- SCHERM 2: GEREEDSCHAP TOEVOEGEN ---
 elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
@@ -431,7 +431,7 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
                     details_str = f"Toegevoegd: {omschrijving} (Ligging: {ligging})"
                     voeg_toe_aan_logboek("Toegevoegd", artikel_nummer, omschrijving, details_str)
                     st.success(f"✨ Artikel '{artikel_nummer}' succesvol toegevoegd!")
-                    st.cache_data.clear() # Cache legen zodat de nieuwe data direct geladen wordt
+                    st.cache_data.clear()
                 else:
                     st.warning(melding)
 

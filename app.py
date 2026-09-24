@@ -240,11 +240,11 @@ bestaane_liggingen_lijst = sorted(df[col_ligging].dropna().astype(str).unique().
 bestaane_liggingen_lijst = [l for l in bestaane_liggingen_lijst if l.strip() and l.lower() != "nan"]
 opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaane_liggingen_lijst + ["➕ Nieuwe ligging opgeven..."]
 
-# --- ZIJKBALK & ADMIN LOGIN ---
+# --- ZIJKBALK: DIRECT BOVENAAN DOWNLOADEN & BEHEER ---
 st.sidebar.title("🔐 Beheer")
 st.sidebar.markdown("---")
 
-# DOWNLOAD KNOP NU BOVENAAN IN DE ZIJKBALK
+# DOWNLOAD KNOP DIRECT BOVENAAN IN DE ZIJKBALK
 st.sidebar.subheader("📥 Exporteren")
 csv_data_sidebar = df.to_csv(index=False).encode('utf-8')
 st.sidebar.download_button(
@@ -609,4 +609,3 @@ elif bewerk_rechten and beheer_actie == "📋 Logboek bekijken":
         st.dataframe(df_log_weergave.iloc[::-1].reset_index(drop=True), use_container_width=True)
     else:
         st.info("Geen logboekhistorie beschikbaar.")
-     

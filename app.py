@@ -44,10 +44,25 @@ def get_github_token():
         pass
     return os.getenv("GITHUB_TOKEN", "")
 
-def optimaliseer_foto(uploaded_file, max_breedte=1000):
-    """Verkleint en comprimeert een geüploade foto automatisch voor snelle opslag."""
+def optimaliseer_foto(uploaded_file, max_breedte=600):
+    """Verkleint en comprimeert foto's (speciaal geoptimaliseerd voor iPad/telefoon) naar max 600px."""
     try:
         img = Image.open(uploaded_file)
+        
+        # Automatisch corrigeren voor EXIF orientatie (voorkomt dat iPad foto's gekanteld opslaat)
+        try:
+            for orientation in Image.ExifTags.TAGS.keys():
+                if Image.ExifTags.TAGS[orientation] == 'Orientation':
+                    break
+            exif = img._getexif()
+            if exif is not None:
+                orientation = exif.get(orientation)
+                if orientation == 3: img = img.rotate(180, expand=True)
+                elif orientation == 6: img = img.rotate(270, expand=True)
+                elif orientation == 8: img = img.rotate(90, expand=True)
+        except Exception:
+            pass
+
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
             
@@ -57,7 +72,7 @@ def optimaliseer_foto(uploaded_file, max_breedte=1000):
             img = img.resize((max_breedte, nieuwe_hoogte), Image.Resampling.LANCZOS)
             
         buffer = BytesIO()
-        img.save(buffer, format="JPEG", quality=80)
+        img.save(buffer, format="JPEG", quality=75) # Extra lichte compressie voor maximale betrouwbaarheid
         return buffer.getvalue()
     except Exception:
         uploaded_file.seek(0)
@@ -364,7 +379,7 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
     st.subheader("➕ Nieuw gereedschap toevoegen")
     st.markdown("---")
     
-    foto = st.file_uploader("Bijlage (Foto)", type=["jpg", "png", "jpeg"], key="add_foto")
+    foto = st.file_uploader("Bijlage (Foto)", type=["jpg", "png", "jpeg", "heic"], key="add_foto")
 
     with st.form("gereedschap_form"):
         c1, c2 = st.columns(2)
@@ -459,7 +474,7 @@ elif bewerk_rechten and beheer_actie == "✏️ Gereedschap wijzigen":
                 rij_index = int(gekozen_item_str.split(" - Rijnr: ")[1])
                 huidige_rij = df.loc[rij_index]
 
-                b_nieuwe_foto = st.file_uploader("Nieuwe Foto (optioneel)", type=["jpg", "png", "jpeg"], key="edit_foto")
+                b_nieuwe_foto = st.file_uploader("Nieuwe Foto (optioneel)", type=["jpg", "png", "jpeg", "heic"], key="edit_foto")
 
                 with st.form("bewerk_form"):
                     bc1, bc2 = st.columns(2)

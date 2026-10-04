@@ -3,35 +3,40 @@ from io import BytesIO
 import os
 import threading
 import time
+import requests
 from PIL import Image
 import pandas as pd
 import streamlit as st
 from github import Github, GithubException
 
-# --- ANTI-SLAAPSTAND ACHTERGROND SCRIPT ---
+# --- CONFIGURATIE & TOKEN BEHEER ---
+GITHUB_REPO = "christoffm88-dotcom/sp"
+BESTAND_NAAM = "gereedschap.csv"
+LOG_BESTAND_NAAM = "logboek.csv"
+
+# --- ANTI-SLAAPSTAND ACHTERGROND SCRIPT (VERBETERD) ---
 def hou_app_wakker():
-    """Stuurt periodiek een verzoek naar de eigen app om te zorgen dat deze wakker blijft."""
-    app_url = os.getenv("STREAMLIT_APP_URL", "")
-    if not app_url:
-        return
-    
+    """Stuurt periodiek een verzoek naar de app zodat deze actief blijft op Streamlit Cloud."""
+    time.sleep(5)  # Kleine pauze bij opstarten zodat de app volledig geladen is
     while True:
         try:
-            requests.get(app_url, timeout=10)
+            # Vang de app URL op of gebruik je vaste Streamlit Cloud URL hieronder
+            app_url = os.getenv("STREAMLIT_APP_URL", "")
+            if not app_url:
+                # Vul hier eventueel handmatig je eigen Streamlit URL in tussen de aanhalingstekens als backup:
+                app_url = "https://christoffm88-dotcom-sp-app-xxxx.streamlit.app" 
+            
+            if app_url and "streamlit.app" in app_url:
+                requests.get(app_url, timeout=10)
         except Exception:
             pass
-        time.sleep(600)
+        time.sleep(300) # Elke 5 minuten pingen
 
 if "ping_thread_gestart" not in st.session_state:
     st.session_state["ping_thread_gestart"] = True
     t = threading.Thread(target=hou_app_wakker, daemon=True)
     t.start()
 
-
-# --- CONFIGURATIE & TOKEN BEHEER ---
-GITHUB_REPO = "christoffm88-dotcom/sp"
-BESTAND_NAAM = "gereedschap.csv"
-LOG_BESTAND_NAAM = "logboek.csv"
 
 def get_github_token():
     """Haalt de token op uit sessie, Streamlit secrets of omgevingsvariabelen."""
@@ -45,8 +50,9 @@ def get_github_token():
     return os.getenv("GITHUB_TOKEN", "")
 
 def optimaliseer_foto(uploaded_file, max_breedte=600):
-    """Verkleint en comprimeert foto's (speciaal geoptimaliseerd voor iPad/telefoon) naar max 600px."""
+    """Verkleint en comprimeert foto's robuust voor iPad/telefoon."""
     try:
+        uploaded_file.seek(0)
         img = Image.open(uploaded_file)
         
         try:
@@ -100,10 +106,10 @@ def sla_op_naar_github(df_to_save, commit_bericht):
         return False, f"⚠️ Lokaal opgeslagen (GitHub sync mislukt: {e})"
 
 def sla_foto_op_naar_github(bestands_inhoud, bestands_naam, commit_bericht):
-    """Uploadt een foto naar GitHub met ingebouwde hertest (retry) voor betrouwbaarheid."""
+    """Uploadt een foto naar GitHub met hertest (retry) voor betrouwbaarheid."""
     token = get_github_token()
     if not token:
-        return False, "Geen token"
+        return False, "Geen token gevonden voor foto-upload"
     
     for poging in range(3):
         try:
@@ -116,15 +122,15 @@ def sla_foto_op_naar_github(bestands_inhoud, bestands_naam, commit_bericht):
                 repo.update_file(path=pad_in_repo, message=commit_bericht, content=bestands_inhoud, sha=file_item.sha)
             except Exception:
                 repo.create_file(path=pad_in_repo, message=commit_bericht, content=bestands_inhoud)
-            return True, "📸 Foto succesvol geüpload!"
+            return True, "📸 Foto succesvol geüpload naar GitHub!"
         except Exception:
             if poging == 2:
                 return False, "❌ Foto-upload mislukt na 3 pogingen."
             time.sleep(1)
-    return False, "Onbekende fout"
+    return False, "Onbekende fout bij foto upload"
 
 def voeg_toe_aan_logboek(actie_type, artikel_nr, omschrijving_tekst, details=""):
-    """Voegt een regel toe aan het logboek en pusht naar GitHub op de achtergrond."""
+    """Voegt een regel toe aan het logboek en pusht naar GitHub."""
     token = get_github_token()
     huidige_tijd = datetime.now().strftime("%d-%m-%Y %H:%M")
     
@@ -240,7 +246,7 @@ bestaane_liggingen_lijst = sorted(df[col_ligging].dropna().astype(str).unique().
 bestaane_liggingen_lijst = [l for l in bestaane_liggingen_lijst if l.strip() and l.lower() != "nan"]
 opties_ligging = ["-- Kies bestaande of typ hieronder --"] + bestaane_liggingen_lijst + ["➕ Nieuwe ligging opgeven..."]
 
-# --- ZIJKBALK: DOWNLOADKNOP STAAT NU ABSOLUUT BOVENAAN ---
+# --- ZIJKBALK ---
 st.sidebar.subheader("📥 Snelle Export")
 csv_data_sidebar = df.to_csv(index=False).encode('utf-8')
 st.sidebar.download_button(
@@ -390,16 +396,14 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
             set_val_input = st.text_input("Set")
 
         keuze_ligging = st.selectbox("Ligging selecteren *", opties_ligging, key="add_ligging")
-        extra_nieuwe_ligging = ""
-        if keuze_ligging == "➕ Nieuwe ligging opgeven...":
-            extra_nieuwe_ligging = st.text_input("Geef de nieuwe ligging op *", key="add_new_lig")
+        extra_nieuwe_ligging = st.text_input("Geef de nieuwe ligging op * (indien hierboven gekozen)", key="add_new_lig")
 
         opmerkingen = st.text_area("Opmerkingen")
         submit_button = st.form_submit_button(label="💾 Opslaan en direct naar GitHub")
 
         if submit_button:
             if keuze_ligging == "➕ Nieuwe ligging opgeven...":
-                ligging = extra_nieuwe_ligging
+                ligging = extra_nieuwe_ligging.strip()
             elif keuze_ligging == "-- Kies bestaande of typ hieronder --":
                 ligging = ""
             else:
@@ -490,9 +494,7 @@ elif bewerk_rechten and beheer_actie == "✏️ Gereedschap wijzigen":
                         index=opties_ligging.index(huidige_ligging_val) if huidige_ligging_val in opties_ligging else 0,
                         key="edit_ligging"
                     )
-                    b_extra_ligging = ""
-                    if b_ligging_keuze == "➕ Nieuwe ligging opgeven...":
-                        b_extra_ligging = st.text_input("Geef de nieuwe ligging op *", key="edit_new_lig")
+                    b_extra_ligging = st.text_input("Geef de nieuwe ligging op * (indien hierboven gekozen)", key="edit_new_lig")
 
                     b_opmerkingen = st.text_area("Opmerkingen", value=str(huidige_rij.get(col_opmerkingen, "")))
                     b_bijlage = st.text_input("Huidige Bijlage", value=str(huidige_rij.get(col_bijlage, "")))
@@ -500,7 +502,12 @@ elif bewerk_rechten and beheer_actie == "✏️ Gereedschap wijzigen":
                     bewerk_submit = st.form_submit_button(label="💾 Wijzigingen opslaan")
 
                     if bewerk_submit:
-                        b_ligging = b_extra_ligging if b_ligging_keuze == "➕ Nieuwe ligging opgeven..." else (b_ligging_keuze if b_ligging_keuze != "-- Kies bestaande of typ hieronder --" else "")
+                        if b_ligging_keuze == "➕ Nieuwe ligging opgeven...":
+                            b_ligging = b_extra_ligging.strip()
+                        elif b_ligging_keuze == "-- Kies bestaande of typ hieronder --":
+                            b_ligging = ""
+                        else:
+                            b_ligging = b_ligging_keuze
                         
                         final_bijlage = b_bijlage
                         if b_nieuwe_foto is not None:

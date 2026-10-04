@@ -79,7 +79,7 @@ def optimaliseer_en_sla_foto_lokaal_op(uploaded_file, artikel_nummer, max_breedt
         img.save(buffer, format="JPEG", quality=75)
         geoptimaliseerde_bytes = buffer.getvalue()
         
-        # 1. ALTIJD eerst lokaal opslaan (zodat de foto nooit verloren gaat)
+        # 1. ALTIJD eerst lokaal opslaan
         os.makedirs("fotos", exist_ok=True)
         foto_naam = f"art_{str(artikel_nummer).replace('/', '_')}.jpg"
         lokaal_pad = os.path.join("fotos", foto_naam)
@@ -99,11 +99,11 @@ def optimaliseer_en_sla_foto_lokaal_op(uploaded_file, artikel_nummer, max_breedt
                 except Exception:
                     repo.create_file(path=pad_in_repo, message=f"Upload foto {artikel_nummer}", content=geoptimaliseerde_bytes)
             except Exception:
-                pass # Foto staat lokaal veilig, dus app crasht niet als GitHub traag is
+                pass
                 
         return foto_naam
     except Exception as e:
-        st.warning(⚠️ Kon foto niet verwerken: {e})
+        st.warning(f"⚠️ Kon foto niet verwerken: {e}")
         return ""
 
 def sla_op_naar_github(df_to_save, commit_bericht):
@@ -415,7 +415,6 @@ elif bewerk_rechten and beheer_actie == "➕ Gereedschap toevoegen":
             else:
                 foto_naam = ""
                 if foto is not None:
-                    # Sla de foto direct veilig lokaal op en probeer te pushen
                     foto_naam = optimaliseer_en_sla_foto_lokaal_op(foto, artikel_nummer)
 
                 huidige_datum = datetime.now().strftime("%d-%m-%Y %H:%M")
